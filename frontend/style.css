@@ -10,7 +10,7 @@ body {
   justify-content: space-between;
   align-items: center;
   padding: 1rem 2rem;
-  background-color: #ff7043;
+  background-color: #FFA07A;
   color: white;
 }
 
@@ -54,7 +54,7 @@ input, textarea, select, button {
 }
 
 button {
-  background-color: #ff7043;
+  background-color: #FFA07A;
   color: white;
   border: none;
   cursor: pointer;
