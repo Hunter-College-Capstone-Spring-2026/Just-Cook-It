@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Your Profile | Just Cook It</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+<header class="navbar">
+  <h1 class="logo">Just Cook It!</h1>
+  <nav>
+    <ul class="nav-links">
+      <li><a href="index.html">Home</a></li>
+      <li><a href="profile.html">Profile</a></li>
+      <li><a href="settings.html">Settings</a></li>
+    </ul>
+  </nav>
+</header>
+
+<main>
+  <h2>Your Profile</h2>
+
+  <section class="card">
+    <label>Email</label>
+    <p id="userEmail">user@email.com</p>
+
+    <button>Change Password</button>
+  </section>
+
+  <section class="card">
+    <h3>Dietary Preferences & Restrictions</h3>
+
+    <label>
+      <input type="checkbox" /> Vegetarian
+    </label>
+    <label>
+      <input type="checkbox" /> Vegan
+    </label>
+    <label>
+      <input type="checkbox" /> Halal
+    </label>
+    <label>
+      <input type="checkbox" /> Gluten-Free
+    </label>
+
+    <textarea placeholder="Allergies or notes (e.g. no peanuts, lactose intolerant)"></textarea>
+  </section>
+
+  <section class="card">
+    <h3>Weekly Cooking Time</h3>
+
+    <div class="day-time">
+      <label>Monday</label>
+      <input type="number" placeholder="Minutes" />
+    </div>
+    <div class="day-time">
+      <label>Tuesday</label>
+      <input type="number" placeholder="Minutes" />
+    </div>
+    <div class="day-time">
+      <label>Wednesday</label>
+      <input type="number" placeholder="Minutes" />
+    </div>
+    <div class="day-time">
+      <label>Thursday</label>
+      <input type="number" placeholder="Minutes" />
+    </div>
+    <div class="day-time">
+      <label>Friday</label>
+      <input type="number" placeholder="Minutes" />
+    </div>
+    <div class="day-time">
+      <label>Saturday</label>
+      <input type="number" placeholder="Minutes" />
+    </div>
+    <div class="day-time">
+      <label>Sunday</label>
+      <input type="number" placeholder="Minutes" />
+    </div>
+
+    <button>Save Preferences</button>
+  </section>
+</main>
+
+<footer>
+  <p>&copy; 2026 Just Cook It</p>
+</footer>
+
+</body>
+</html>
