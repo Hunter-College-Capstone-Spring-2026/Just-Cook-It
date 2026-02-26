@@ -1,7 +1,8 @@
 body {
-  font-family: Arial, sans-serif;
+  display: flex;
+  flex-direction: column;
   margin: 0;
-  background-color: #fafafa;
+  font-family: Arial, sans-serif;
 }
 
 .navbar {
@@ -57,4 +58,8 @@ button {
   color: white;
   border: none;
   cursor: pointer;
+}
+
+html, body {
+  height: 100%;
 }
