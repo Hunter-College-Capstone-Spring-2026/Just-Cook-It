@@ -11,23 +11,27 @@
 <body>
 
   <!-- Header / Navigation -->
-  <header>
-    <h1>Just Cook It!</h1>
+  <header class="navbar">
+    <h1 class="logo">Just Cook It!</h1>
     <nav>
-      <!-- Navigation links can go here later -->
+      <ul class="nav-links">
+        <li><a href="index.html">Home</a></li>
+        <li><a href="profile.html">Profile</a></li>
+        <li><a href="settings.html">Settings</a></li>
+      </ul>
     </nav>
   </header>
 
   <!-- Main Content -->
   <main>
     <section id="intro">
-      <h2>Welcome!</h2>
-      <p>Get meals quickly.</p>
+      <h2>Welcome 👋</h2>
+      <p>Tell us what you have. We’ll tell you what to cook — fast.</p>
     </section>
 
     <section id="interaction">
-      <h2>User Interaction</h2>
-      <input type="text" id="userInput" placeholder="Type something..." />
+      <h2>What are you cooking with?</h2>
+      <input type="text" id="userInput" placeholder="e.g. chicken, rice, spinach" />
       <button id="actionBtn">Cook it!</button>
       <p id="output"></p>
     </section>
