@@ -116,3 +116,11 @@ html,
 body {
   height: 100%;
 }
+
+#actionBtn {
+  width: auto;
+  padding: 0.5rem 1.5rem;
+  font-size: 0.95rem;
+  border-radius: 20px; /* cozy, pill-shaped */
+  display: inline-block;
+}
