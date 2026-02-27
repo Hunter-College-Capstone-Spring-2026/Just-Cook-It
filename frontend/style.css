@@ -132,3 +132,26 @@ body {
   border-radius: 20px; /* cozy, pill-shaped */
   display: inline-block;
 }
+
+.nudge {
+  margin-top: 12px;
+  padding: 10px 14px;
+  background-color: #ffd3b8;
+  color: #5a2e1a;
+  border-radius: 12px;
+  font-size: 0.9rem;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.08);
+  opacity: 0;
+  transform: translateY(6px);
+  transition: opacity 0.4s ease, transform 0.4s ease;
+  width: fit-content;
+}
+
+.nudge.show {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.hidden {
+  display: none;
+}
