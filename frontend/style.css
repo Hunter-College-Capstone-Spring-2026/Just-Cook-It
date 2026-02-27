@@ -63,3 +63,17 @@ button {
 html, body {
   height: 100%;
 }
+
+.card img {
+  width: 100%;
+  border-radius: 6px;
+  margin-top: 0.5rem;
+}
+
+.card a {
+  display: inline-block;
+  margin-top: 0.5rem;
+  color: #FFA07A;
+  font-weight: bold;
+  text-decoration: none;
+}
