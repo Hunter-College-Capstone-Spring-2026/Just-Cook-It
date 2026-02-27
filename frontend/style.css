@@ -68,12 +68,19 @@ html, body {
   opacity: 0;
   display: inline-block;
   transform: translateY(-10px);
-  animation: trickleIn 0.6s forwards;
+  animation: welcomeBounce 0.6s cubic-bezier(0.25, 1.4, 0.5, 1) forwards;
 }
 
-@keyframes trickleIn {
-  to {
+@keyframes welcomeBounce {
+  0% {
+    opacity: 0;
+    transform: translateY(-12px);
+  }
+  70% {
     opacity: 1;
+    transform: translateY(3px);
+  }
+  100% {
     transform: translateY(0);
   }
 }
