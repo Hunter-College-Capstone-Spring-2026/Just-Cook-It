@@ -29,3 +29,19 @@ document.addEventListener("DOMContentLoaded", () => {
 
   }, startDelay);
 });
+
+document.addEventListener("DOMContentLoaded", () => {
+  const input = document.querySelector("input");
+  const nudge = document.getElementById("nudge");
+
+  let nudgeTimer = setTimeout(() => {
+    nudge.classList.remove("hidden");
+    nudge.classList.add("show");
+  }, 6000); // 6 seconds
+
+  input.addEventListener("input", () => {
+    clearTimeout(nudgeTimer);
+    nudge.classList.remove("show");
+    nudge.classList.add("hidden");
+  });
+});
