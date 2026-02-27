@@ -63,3 +63,17 @@ button {
 html, body {
   height: 100%;
 }
+
+.welcome-text span {
+  opacity: 0;
+  display: inline-block;
+  transform: translateY(-10px);
+  animation: trickleIn 0.6s forwards;
+}
+
+@keyframes trickleIn {
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
