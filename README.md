@@ -14,4 +14,3 @@ ingredients, dietary preferences, and available time.
 
 ## How to Run
 1. Clone the repo
-2. Open `index.html` in browser
