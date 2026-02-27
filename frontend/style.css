@@ -104,6 +104,14 @@ button:active {
   opacity: 0;
   transform: translateY(20px);
   transition: opacity 0.6s ease, transform 0.6s ease;
+
+  max-width: 500px;
+  margin: 2rem auto;
+  text-align: center;
+}
+
+#interaction input {
+  text-align: center;
 }
 
 #interaction.show {
