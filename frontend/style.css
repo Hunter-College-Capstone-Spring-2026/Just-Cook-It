@@ -1,8 +1,12 @@
 body {
-  display: flex;
-  flex-direction: column;
-  margin: 0;
-  font-family: Arial, sans-serif;
+  background-color: #fff8f2;
+  background-image: repeating-linear-gradient(
+    45deg,
+    rgba(255, 180, 140, 0.08),
+    rgba(255, 180, 140, 0.08) 10px,
+    transparent 10px,
+    transparent 20px
+  );
 }
 
 .navbar {
