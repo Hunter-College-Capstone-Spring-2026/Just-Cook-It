@@ -81,6 +81,14 @@ button:active {
   box-shadow: 0 3px 8px rgba(0, 0, 0, 0.12);
 }
 
+input:focus,
+textarea:focus,
+select:focus,
+button:focus-visible {
+  outline: 2px solid #d66f4b;
+  outline-offset: 2px;
+}
+
 .welcome-text {
   font-family: 'Pacifico', cursive;
   font-size: 3rem;
@@ -119,7 +127,6 @@ button:active {
   transform: translateY(0);
 }
 
-/* 📏 Full height */
 html,
 body {
   height: 100%;
@@ -154,4 +161,22 @@ body {
 
 .hidden {
   display: none;
+}
+
+#output {
+  margin-top: 0.9rem;
+  font-size: 0.95rem;
+  color: #5a2e1a;
+  min-height: 1.2rem;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  border: 0;
 }
