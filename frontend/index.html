@@ -21,17 +21,10 @@
   </header>
 
   <main>
-    <h1 id="welcome" class="welcome-text" aria-label="Welcome">Welcome!</h1>
-
-    <section id="interaction" aria-live="polite">
-      <h2>What do you have in your kitchen?</h2>
-      <label class="sr-only" for="userInput">Ingredients</label>
-      <input type="text" id="userInput" placeholder="e.g. chicken, rice, spinach" />
-      <div id="nudge" class="nudge hidden">Not sure where to start? Try one ingredient.</div>
-      <button id="actionBtn" type="button">Cook it!</button>
-      <p id="output"></p>
-    </section>
+    <div id="app"></div>
   </main>
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   <script src="script.js"></script>
 </body>
 </html>
