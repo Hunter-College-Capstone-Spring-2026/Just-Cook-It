@@ -1,80 +1,70 @@
-# Just-Cook-It Backend (Second Progress Milestone)
+# Just-Cook-It Developer Setup
 
-This milestone delivers a complete backend foundation using Node.js + Express, Supabase integration, and Spoonacular integration.
+This repo includes:
+- A React + Vite frontend
+- A Node.js + Express backend
+- Supabase integration
+- Spoonacular integration using `Search Recipes by Ingredients`
 
-## Backend Features
-- Modular Express backend (`config`, `routes`, `controllers`, `services`, `middleware`, `utils`)
-- Supabase client integration with environment-based configuration
-- Startup Supabase connectivity check
-- Reusable Supabase helper functions for `get`, `insert`, and `update`
-- Database schema metadata endpoint aligned with the team ERD
-- Spoonacular API integration with error handling for invalid keys, rate limits, and empty results
-
-## Folder Structure
-```text
-backend/
-  src/
-    app.js
-    server.js
-    config/
-      env.js
-      spoonacularClient.js
-      supabaseClient.js
-    controllers/
-      dbController.js
-      healthController.js
-      spoonacularController.js
-    middleware/
-      errorHandler.js
-    routes/
-      dbRoutes.js
-      healthRoutes.js
-      index.js
-      spoonacularRoutes.js
-    services/
-      spoonacularService.js
-      supabase/
-        connectionService.js
-        dbService.js
-        schema.js
-    utils/
-      asyncHandler.js
-  .env.example
-  package.json
-```
-
-## Setup Instructions
-1. Install dependencies:
+## 1) Backend Setup
 ```bash
 cd backend
 npm install
-```
-2. Create your env file from the template:
-```bash
 cp .env.example .env
 ```
-3. Fill in your keys in `backend/.env`:
-- `SUPABASE_URL`
-- `SUPABASE_ANON_KEY`
-- `SPOONACULAR_API_KEY`
-4. Start backend in development mode:
+
+Fill `backend/.env`:
+```env
+PORT=4000
+NODE_ENV=development
+SUPABASE_URL=https://<your-project-ref>.supabase.co
+SUPABASE_ANON_KEY=sb_publishable_<your_key>
+SPOONACULAR_API_KEY=<your_spoonacular_key>
+SPOONACULAR_BASE_URL=https://api.spoonacular.com
+```
+
+Start backend:
 ```bash
 npm run dev
 ```
-5. Or run normally:
+
+Expected startup logs include:
+- `Backend listening on http://localhost:4000`
+- `Supabase connection check passed (table access confirmed).`
+
+## 2) Frontend Setup
 ```bash
-npm start
+cd frontend
+npm install
+npm run dev
 ```
 
-## API Endpoints
-- `GET /api/health`: basic health status
-- `GET /api/db/schema`: schema metadata, table purpose comments, and relationship list
-- `GET /api/db/:tableName`: fetch table rows (supports query filters + limit/order)
-- `POST /api/db/:tableName`: insert one or many rows
-- `PATCH /api/db/:tableName`: update rows using scoped filters
-- `GET /api/spoonacular/recipes/search?query=pasta&number=5`: search recipes from Spoonacular
+Open:
+- `http://localhost:5173`
+
+Optional frontend env (`frontend/.env`):
+```env
+VITE_API_BASE_URL=http://localhost:4000
+```
+
+## Backend API Endpoints
+- `GET /api/health`
+- `GET /api/db/schema`
+- `GET /api/db/:tableName`
+- `POST /api/db/:tableName`
+- `PATCH /api/db/:tableName`
+- `GET /api/spoonacular/recipes/search?ingredients=rice,tomato&number=5&ranking=1&ignorePantry=true`
+
+## Spoonacular Integration
+The backend uses Spoonacular's ingredient-based search endpoint:
+- `GET /recipes/findByIngredients`
+
+Mapped query params:
+- `ingredients` (required, comma-separated)
+- `number` (optional, default `10`)
+- `ranking` (optional, default `1`)
+- `ignorePantry` (optional, default `true`)
 
 ## Notes
-- No API keys are hardcoded in source.
-- The backend verifies Supabase table access during startup.
-- Use only environment variables for secret/config values.
+- Do not commit `.env` files.
+- API keys are loaded only from environment variables.

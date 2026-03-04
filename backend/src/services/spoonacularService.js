@@ -35,33 +35,42 @@ function assertSpoonacularKey() {
   }
 }
 
-async function searchRecipes({ query, number = 10 }) {
+async function searchRecipesByIngredients({
+  ingredients,
+  number = 10,
+  ranking = 1,
+  ignorePantry = true
+}) {
   assertSpoonacularKey();
 
-  if (!query || !query.trim()) {
-    const error = new Error("Query is required for recipe search.");
+  if (!ingredients || !ingredients.trim()) {
+    const error = new Error("Ingredients are required (comma-separated).");
     error.statusCode = 400;
     throw error;
   }
 
   try {
-    const { data } = await spoonacularClient.get("/recipes/complexSearch", {
+    const { data } = await spoonacularClient.get("/recipes/findByIngredients", {
       params: {
         apiKey: env.spoonacularApiKey,
-        query: query.trim(),
-        number
+        ingredients: ingredients.trim(),
+        number,
+        ranking,
+        ignorePantry
       }
     });
 
-    const results = data.results || [];
+    const results = Array.isArray(data) ? data : [];
 
     return {
-      totalResults: data.totalResults || 0,
+      totalResults: results.length,
       results: results.map((item) => ({
         recipeId: item.id,
         recipeName: item.title,
         recipeImageUrl: item.image,
-        recipe_ready_time: item.readyInMinutes ?? null
+        usedIngredientCount: item.usedIngredientCount ?? 0,
+        missedIngredientCount: item.missedIngredientCount ?? 0,
+        missedIngredients: (item.missedIngredients || []).map((ingredient) => ingredient.name)
       }))
     };
   } catch (error) {
@@ -70,5 +79,5 @@ async function searchRecipes({ query, number = 10 }) {
 }
 
 module.exports = {
-  searchRecipes
+  searchRecipesByIngredients
 };

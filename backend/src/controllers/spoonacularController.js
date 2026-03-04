@@ -1,11 +1,13 @@
-const { searchRecipes } = require("../services/spoonacularService");
+const { searchRecipesByIngredients } = require("../services/spoonacularService");
 
 async function searchRecipesController(req, res) {
-  const { query, number } = req.query;
+  const { ingredients, number, ranking, ignorePantry } = req.query;
 
-  const payload = await searchRecipes({
-    query,
-    number: number ? Number(number) : 10
+  const payload = await searchRecipesByIngredients({
+    ingredients,
+    number: number ? Number(number) : 10,
+    ranking: ranking ? Number(ranking) : 1,
+    ignorePantry: ignorePantry ? ignorePantry === "true" : true
   });
 
   if (!payload.results.length) {

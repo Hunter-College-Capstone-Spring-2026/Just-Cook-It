@@ -88,7 +88,7 @@ function App() {
       </header>
 
       <main>
-        {activePage === "home" && <HomePage profile={profile} settings={settings} />}
+        {activePage === "home" && <HomePage settings={settings} />}
         {activePage === "profile" && <ProfilePage profile={profile} setProfile={setProfile} />}
         {activePage === "settings" && <SettingsPage settings={settings} setSettings={setSettings} />}
       </main>
@@ -96,7 +96,7 @@ function App() {
   );
 }
 
-function HomePage({ profile, settings }) {
+function HomePage({ settings }) {
   const [inputValue, setInputValue] = useState("");
   const [showNudge, setShowNudge] = useState(false);
   const [visibleChars, setVisibleChars] = useState(0);
@@ -157,26 +157,30 @@ function HomePage({ profile, settings }) {
     setLoading(true);
 
     try {
-      const response = await fetch(`${API_BASE_URL}/api/recipes`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ingredients,
-          preferences: {
-            vegetarian: profile.dietary.vegetarian,
-            vegan: profile.dietary.vegan,
-            quickRecipes: settings.quickRecipes
-          }
-        })
+      const query = new URLSearchParams({
+        ingredients,
+        number: settings.quickRecipes ? "5" : "10",
+        ranking: "1",
+        ignorePantry: "true"
       });
+      const response = await fetch(`${API_BASE_URL}/api/spoonacular/recipes/search?${query.toString()}`);
 
       const payload = await response.json();
 
       if (!response.ok) {
-        throw new Error(payload.error || "Unable to fetch recipe ideas right now.");
+        throw new Error(payload?.error?.message || "Unable to fetch recipe ideas right now.");
       }
 
-      setRecipes(payload.recipes || []);
+      const mappedRecipes = (payload.results || []).map((recipe) => ({
+        id: recipe.recipeId,
+        title: recipe.recipeName,
+        imageUrl: recipe.recipeImageUrl,
+        usedIngredientCount: recipe.usedIngredientCount,
+        missedIngredientCount: recipe.missedIngredientCount,
+        missedIngredients: recipe.missedIngredients || []
+      }));
+
+      setRecipes(mappedRecipes);
     } catch (requestError) {
       setApiError(requestError.message || "Could not connect to backend API.");
       setRecipes([]);
@@ -228,10 +232,10 @@ function HomePage({ profile, settings }) {
               <li key={recipe.id} className="recipe-card">
                 <p className="recipe-title">{recipe.title}</p>
                 <p>
-                  {recipe.cookTimeMinutes} min | Matches: {recipe.matchCount}
+                  Uses {recipe.usedIngredientCount} | Missing {recipe.missedIngredientCount}
                 </p>
                 <p>
-                  Missing: {recipe.missingIngredients.length ? recipe.missingIngredients.join(", ") : "None"}
+                  Missing ingredients: {recipe.missedIngredients.length ? recipe.missedIngredients.join(", ") : "None"}
                 </p>
               </li>
             ))}
