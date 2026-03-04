@@ -1,22 +1,25 @@
 # Just-Cook-It Developer Setup
 
 This repo includes:
-- A React + Vite frontend
-- A Node.js + Express backend
-- Supabase integration
-- Spoonacular integration using `Search Recipes by Ingredients`
+- Frontend: React + Vite
+- Backend: Python + FastAPI
+- Supabase connectivity check on backend startup
+- Spoonacular integration using Search Recipes by Ingredients
 
-## 1) Backend Setup
+## 1) Backend Setup (FastAPI)
 ```bash
 cd backend
-npm install
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
 cp .env.example .env
 ```
 
 Fill `backend/.env`:
 ```env
+HOST=0.0.0.0
 PORT=4000
-NODE_ENV=development
+FRONTEND_ORIGIN=http://localhost:5173
 SUPABASE_URL=https://<your-project-ref>.supabase.co
 SUPABASE_ANON_KEY=sb_publishable_<your_key>
 SPOONACULAR_API_KEY=<your_spoonacular_key>
@@ -25,12 +28,8 @@ SPOONACULAR_BASE_URL=https://api.spoonacular.com
 
 Start backend:
 ```bash
-npm run dev
+uvicorn app.main:app --host 0.0.0.0 --port 4000 --reload
 ```
-
-Expected startup logs include:
-- `Backend listening on http://localhost:4000`
-- `Supabase connection check passed (table access confirmed).`
 
 ## 2) Frontend Setup
 ```bash
@@ -40,7 +39,7 @@ npm run dev
 ```
 
 Open:
-- `http://localhost:5173`
+- http://localhost:5173
 
 Optional frontend env (`frontend/.env`):
 ```env
@@ -49,22 +48,20 @@ VITE_API_BASE_URL=http://localhost:4000
 
 ## Backend API Endpoints
 - `GET /api/health`
-- `GET /api/db/schema`
-- `GET /api/db/:tableName`
-- `POST /api/db/:tableName`
-- `PATCH /api/db/:tableName`
 - `GET /api/spoonacular/recipes/search?ingredients=rice,tomato&number=5&ranking=1&ignorePantry=true`
+- `GET /api/pantry/` (placeholder)
+- `GET /api/users/` (placeholder)
 
-## Spoonacular Integration
-The backend uses Spoonacular's ingredient-based search endpoint:
-- `GET /recipes/findByIngredients`
+## Spoonacular Notes
+Backend calls:
+- `GET https://api.spoonacular.com/recipes/findByIngredients`
 
-Mapped query params:
+Mapped params:
 - `ingredients` (required, comma-separated)
-- `number` (optional, default `10`)
-- `ranking` (optional, default `1`)
-- `ignorePantry` (optional, default `true`)
+- `number` (default `10`)
+- `ranking` (default `1`)
+- `ignorePantry` (default `true`)
 
-## Notes
+## Security Notes
 - Do not commit `.env` files.
-- API keys are loaded only from environment variables.
+- Keys are read from environment variables only.

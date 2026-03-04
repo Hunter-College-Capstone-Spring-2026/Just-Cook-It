@@ -14,6 +14,7 @@ const WEEK_DAYS = [
 
 const defaultProfile = {
   email: "user@email.com",
+  name: "Cook It User",
   dietary: {
     vegetarian: false,
     vegan: false,
@@ -38,6 +39,20 @@ const defaultSettings = {
   units: "metric"
 };
 
+const SUPPORTIVE_LINES = [
+  "You are doing a lot. Let's make this one thing easy.",
+  "No pressure. We can find something simple in under a minute.",
+  "You showed up. That's enough for today. We'll handle the recipe part.",
+  "Take one breath. Type what you have, and we will do the heavy lifting."
+];
+
+function generateUserId() {
+  if (typeof crypto !== "undefined" && crypto.randomUUID) {
+    return crypto.randomUUID();
+  }
+  return `user-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
 function useLocalStorage(key, initialValue) {
   const [value, setValue] = useState(() => {
     try {
@@ -55,10 +70,31 @@ function useLocalStorage(key, initialValue) {
   return [value, setValue];
 }
 
+function mergeProfile(base, incoming) {
+  return {
+    ...base,
+    ...incoming,
+    dietary: {
+      ...base.dietary,
+      ...(incoming?.dietary || {})
+    },
+    weeklyTime: {
+      ...base.weeklyTime,
+      ...(incoming?.weeklyTime || {})
+    }
+  };
+}
+
 function App() {
   const [activePage, setActivePage] = useState("home");
   const [profile, setProfile] = useLocalStorage("jci_profile", defaultProfile);
   const [settings, setSettings] = useLocalStorage("jci_settings", defaultSettings);
+  const [userId] = useLocalStorage("jci_user_id", generateUserId());
+
+  const [profileSyncMessage, setProfileSyncMessage] = useState("Profile stored locally.");
+  const [settingsSyncMessage, setSettingsSyncMessage] = useState("Settings stored locally.");
+  const [savingProfile, setSavingProfile] = useState(false);
+  const [savingSettings, setSavingSettings] = useState(false);
 
   const navItems = [
     { id: "home", label: "Home" },
@@ -66,8 +102,97 @@ function App() {
     { id: "settings", label: "Settings" }
   ];
 
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadRemoteState = async () => {
+      try {
+        const [profileResp, settingsResp] = await Promise.all([
+          fetch(`${API_BASE_URL}/api/users/profile?userId=${encodeURIComponent(userId)}`),
+          fetch(`${API_BASE_URL}/api/users/settings?userId=${encodeURIComponent(userId)}`)
+        ]);
+
+        if (profileResp.ok) {
+          const profilePayload = await profileResp.json();
+          if (isMounted) {
+            setProfile((current) => mergeProfile(current, profilePayload));
+            setProfileSyncMessage("Profile synced with Supabase.");
+          }
+        } else if (isMounted) {
+          setProfileSyncMessage("Using local profile (Supabase profile sync unavailable).");
+        }
+
+        if (settingsResp.ok) {
+          const settingsPayload = await settingsResp.json();
+          if (isMounted) {
+            setSettings((current) => ({ ...current, ...settingsPayload }));
+            setSettingsSyncMessage("Settings synced with Supabase.");
+          }
+        } else if (isMounted) {
+          setSettingsSyncMessage("Using local settings (Supabase settings sync unavailable).");
+        }
+      } catch {
+        if (isMounted) {
+          setProfileSyncMessage("Using local profile (could not reach backend).");
+          setSettingsSyncMessage("Using local settings (could not reach backend).");
+        }
+      }
+    };
+
+    loadRemoteState();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [setProfile, setSettings, userId]);
+
+  const saveProfile = async () => {
+    setSavingProfile(true);
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/users/profile`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId, ...profile })
+      });
+
+      const payload = await response.json();
+      if (!response.ok) {
+        throw new Error(payload?.detail || "Profile save failed.");
+      }
+
+      setProfileSyncMessage(payload.warning ? `Saved with warning: ${payload.warning}` : "Profile saved to Supabase.");
+    } catch (error) {
+      setProfileSyncMessage(error.message || "Profile saved locally only.");
+    } finally {
+      setSavingProfile(false);
+    }
+  };
+
+  const saveSettings = async () => {
+    setSavingSettings(true);
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/users/settings`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId, ...settings })
+      });
+
+      const payload = await response.json();
+      if (!response.ok) {
+        throw new Error(payload?.detail || "Settings save failed.");
+      }
+
+      setSettingsSyncMessage(payload.warning ? `Saved with warning: ${payload.warning}` : "Settings saved to Supabase.");
+    } catch (error) {
+      setSettingsSyncMessage(error.message || "Settings saved locally only.");
+    } finally {
+      setSavingSettings(false);
+    }
+  };
+
   return (
     <>
+      <CursorAura />
       <header className="navbar">
         <h1 className="logo">Just Cook It!</h1>
         <nav>
@@ -88,10 +213,41 @@ function App() {
       </header>
 
       <main>
-        {activePage === "home" && <HomePage settings={settings} />}
-        {activePage === "profile" && <ProfilePage profile={profile} setProfile={setProfile} />}
-        {activePage === "settings" && <SettingsPage settings={settings} setSettings={setSettings} />}
+        <section key={activePage} className="page-shell" aria-live="polite">
+          {activePage === "home" && <HomePage settings={settings} />}
+          {activePage === "profile" && (
+            <ProfilePage
+              profile={profile}
+              setProfile={setProfile}
+              onSave={saveProfile}
+              syncMessage={profileSyncMessage}
+              saving={savingProfile}
+            />
+          )}
+          {activePage === "settings" && (
+            <SettingsPage
+              settings={settings}
+              setSettings={setSettings}
+              onSave={saveSettings}
+              syncMessage={settingsSyncMessage}
+              saving={savingSettings}
+            />
+          )}
+        </section>
       </main>
+
+      <nav className="quick-nav" aria-label="Quick navigation">
+        {navItems.map((item) => (
+          <button
+            key={item.id}
+            type="button"
+            className={`quick-nav-btn ${activePage === item.id ? "active" : ""}`}
+            onClick={() => setActivePage(item.id)}
+          >
+            {item.label}
+          </button>
+        ))}
+      </nav>
     </>
   );
 }
@@ -105,9 +261,26 @@ function HomePage({ settings }) {
   const [loading, setLoading] = useState(false);
   const [apiError, setApiError] = useState("");
   const [recipes, setRecipes] = useState([]);
+  const [selectedRecipeId, setSelectedRecipeId] = useState("");
+  const [celebrate, setCelebrate] = useState(false);
+  const [feedback, setFeedback] = useState("");
+  const [commitmentName, setCommitmentName] = useState("");
+  const [commitmentPosted, setCommitmentPosted] = useState(false);
+  const [rewardUnlockedToday, setRewardUnlockedToday] = useState(false);
 
   const welcomeText = "Welcome!";
   const characters = useMemo(() => welcomeText.split(""), [welcomeText]);
+  const supportiveMessage = useMemo(() => {
+    const hour = new Date().getHours();
+    const idx = hour % SUPPORTIVE_LINES.length;
+    return SUPPORTIVE_LINES[idx];
+  }, []);
+  const progressStepsDone = [
+    inputValue.trim().length > 0,
+    recipes.length > 0,
+    selectedRecipeId.length > 0
+  ].filter(Boolean).length;
+  const progressPercent = Math.round((progressStepsDone / 3) * 100);
 
   useEffect(() => {
     const startDelay = 400;
@@ -168,7 +341,7 @@ function HomePage({ settings }) {
       const payload = await response.json();
 
       if (!response.ok) {
-        throw new Error(payload?.error?.message || "Unable to fetch recipe ideas right now.");
+        throw new Error(payload?.error?.message || payload?.detail || "Unable to fetch recipe ideas right now.");
       }
 
       const mappedRecipes = (payload.results || []).map((recipe) => ({
@@ -181,12 +354,62 @@ function HomePage({ settings }) {
       }));
 
       setRecipes(mappedRecipes);
+      setSelectedRecipeId("");
     } catch (requestError) {
       setApiError(requestError.message || "Could not connect to backend API.");
       setRecipes([]);
     } finally {
       setLoading(false);
     }
+  };
+
+  const applyIngredientSuggestion = (value) => {
+    setInputValue((current) => (current ? `${current}, ${value}` : value));
+  };
+
+  const quickSets = ["rice", "eggs", "chicken", "onion", "tomato", "spinach", "beans"];
+
+  const playSuccessChime = () => {
+    try {
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      if (!AudioCtx) return;
+      const ctx = new AudioCtx();
+      const oscillator = ctx.createOscillator();
+      const gainNode = ctx.createGain();
+      oscillator.type = "triangle";
+      oscillator.frequency.value = 660;
+      gainNode.gain.value = 0.05;
+      oscillator.connect(gainNode);
+      gainNode.connect(ctx.destination);
+      oscillator.start();
+      oscillator.frequency.exponentialRampToValueAtTime(990, ctx.currentTime + 0.22);
+      gainNode.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.24);
+      oscillator.stop(ctx.currentTime + 0.24);
+    } catch {
+      // no-op for browsers without audio context permissions
+    }
+  };
+
+  const completeRecipePlan = (recipeId) => {
+    setSelectedRecipeId(recipeId);
+    setCelebrate(true);
+    playSuccessChime();
+
+    const today = new Date().toISOString().slice(0, 10);
+    const lastRewardDate = window.localStorage.getItem("jci_reward_day");
+    if (lastRewardDate !== today) {
+      setRewardUnlockedToday(true);
+      window.localStorage.setItem("jci_reward_day", today);
+    } else {
+      setRewardUnlockedToday(false);
+    }
+
+    setTimeout(() => setCelebrate(false), 1000);
+  };
+
+  const postCommitment = () => {
+    if (!commitmentName.trim()) return;
+    setCommitmentPosted(true);
   };
 
   return (
@@ -198,6 +421,21 @@ function HomePage({ settings }) {
       </h2>
 
       <section id="interaction" aria-live="polite" className={showInteraction ? "show" : ""}>
+        {celebrate ? <ConfettiBurst /> : null}
+        <div className="pressure-banner">
+          <p>{supportiveMessage}</p>
+        </div>
+        <section className="fogg-panel gradient-card">
+          <h4>Your next win</h4>
+          <p>
+            Motivation: protect your energy now, and your future time later. Ability: use one ingredient if needed.
+            Prompt: press <strong>Cook it!</strong> now.
+          </p>
+          <div className="progress-strip" aria-label="Task progress">
+            <div className="progress-fill" style={{ width: `${progressPercent}%` }} />
+          </div>
+          <p className="progress-copy">Progress: {progressStepsDone}/3 actions complete</p>
+        </section>
         <h3>What do you have in your kitchen?</h3>
         <label className="sr-only" htmlFor="userInput">
           Ingredients
@@ -208,7 +446,18 @@ function HomePage({ settings }) {
           placeholder="e.g. chicken, rice, spinach"
           value={inputValue}
           onChange={(event) => setInputValue(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") searchRecipes();
+          }}
         />
+
+        <div className="quick-ingredients" aria-label="Quick ingredient suggestions">
+          {quickSets.map((item) => (
+            <button key={item} type="button" className="chip-btn" onClick={() => applyIngredientSuggestion(item)}>
+              + {item}
+            </button>
+          ))}
+        </div>
 
         <div id="nudge" className={`nudge ${showNudge ? "show" : "hidden"}`}>
           Not sure where to start? Try one ingredient.
@@ -229,7 +478,10 @@ function HomePage({ settings }) {
 
           <ul className="recipe-list">
             {recipes.map((recipe) => (
-              <li key={recipe.id} className="recipe-card">
+              <li
+                key={recipe.id}
+                className={`recipe-card gradient-card ${selectedRecipeId === recipe.id ? "selected-recipe" : ""}`}
+              >
                 <p className="recipe-title">{recipe.title}</p>
                 <p>
                   Uses {recipe.usedIngredientCount} | Missing {recipe.missedIngredientCount}
@@ -237,16 +489,66 @@ function HomePage({ settings }) {
                 <p>
                   Missing ingredients: {recipe.missedIngredients.length ? recipe.missedIngredients.join(", ") : "None"}
                 </p>
+                <button type="button" className="plan-btn" onClick={() => completeRecipePlan(recipe.id)}>
+                  {selectedRecipeId === recipe.id ? "Planned" : "I'll cook this"}
+                </button>
               </li>
             ))}
           </ul>
+
+          {selectedRecipeId ? (
+            <section className="completion-panel gradient-card" aria-live="polite">
+              <h4>Plan locked in</h4>
+              <p>
+                Great call. You completed a high-pressure decision. This helps tonight and reduces tomorrow's stress
+                too.
+              </p>
+              {rewardUnlockedToday ? (
+                <p className="reward-line">Scarce reward unlocked: Golden Ladle token for today.</p>
+              ) : (
+                <p className="reward-line">Today's scarce reward already claimed. Keep your streak tomorrow.</p>
+              )}
+
+              <div className="commitment-box">
+                <label htmlFor="commitmentName">Who are you making this for?</label>
+                <input
+                  id="commitmentName"
+                  type="text"
+                  placeholder="friend, sibling, roommate..."
+                  value={commitmentName}
+                  onChange={(event) => {
+                    setCommitmentName(event.target.value);
+                    setCommitmentPosted(false);
+                  }}
+                />
+                <button type="button" onClick={postCommitment}>
+                  Commit
+                </button>
+                {commitmentPosted ? (
+                  <p className="commitment-line">Commitment posted: You will cook for {commitmentName} tonight.</p>
+                ) : null}
+              </div>
+
+              <div className="survey-box">
+                <p>How supported did you feel by this flow?</p>
+                <div className="survey-actions">
+                  {["Too busy", "Okay", "Very supported"].map((option) => (
+                    <button key={option} type="button" onClick={() => setFeedback(option)}>
+                      {option}
+                    </button>
+                  ))}
+                </div>
+                {feedback ? <p className="feedback-line">Thanks. Feedback saved: {feedback}</p> : null}
+              </div>
+            </section>
+          ) : null}
         </section>
       </section>
     </>
   );
 }
 
-function ProfilePage({ profile, setProfile }) {
+function ProfilePage({ profile, setProfile, onSave, syncMessage, saving }) {
   const updateDietary = (name) => {
     setProfile((current) => ({
       ...current,
@@ -269,9 +571,19 @@ function ProfilePage({ profile, setProfile }) {
 
   return (
     <>
-      <h2>Your Profile</h2>
+      <h2 className="section-title">Your Profile</h2>
+      <p className="sync-line">{syncMessage}</p>
 
-      <section className="card">
+      <section className="card gradient-card profile-card">
+        <h3>Identity</h3>
+        <label htmlFor="name">Name</label>
+        <input
+          id="name"
+          type="text"
+          value={profile.name || ""}
+          onChange={(event) => setProfile((current) => ({ ...current, name: event.target.value }))}
+        />
+
         <label htmlFor="email">Email</label>
         <input
           id="email"
@@ -281,33 +593,38 @@ function ProfilePage({ profile, setProfile }) {
         />
       </section>
 
-      <section className="card">
+      <section className="card gradient-card profile-card">
         <h3>Dietary Preferences & Restrictions</h3>
-
-        <label>
-          <input
-            type="checkbox"
-            checked={profile.dietary.vegetarian}
-            onChange={() => updateDietary("vegetarian")}
-          />
-          Vegetarian
-        </label>
-        <label>
-          <input type="checkbox" checked={profile.dietary.vegan} onChange={() => updateDietary("vegan")} />
-          Vegan
-        </label>
-        <label>
-          <input type="checkbox" checked={profile.dietary.halal} onChange={() => updateDietary("halal")} />
-          Halal
-        </label>
-        <label>
-          <input
-            type="checkbox"
-            checked={profile.dietary.glutenFree}
-            onChange={() => updateDietary("glutenFree")}
-          />
-          Gluten-Free
-        </label>
+        <div className="preference-grid">
+          <button
+            type="button"
+            className={`toggle-tile ${profile.dietary.vegetarian ? "on" : ""}`}
+            onClick={() => updateDietary("vegetarian")}
+          >
+            Vegetarian
+          </button>
+          <button
+            type="button"
+            className={`toggle-tile ${profile.dietary.vegan ? "on" : ""}`}
+            onClick={() => updateDietary("vegan")}
+          >
+            Vegan
+          </button>
+          <button
+            type="button"
+            className={`toggle-tile ${profile.dietary.halal ? "on" : ""}`}
+            onClick={() => updateDietary("halal")}
+          >
+            Halal
+          </button>
+          <button
+            type="button"
+            className={`toggle-tile ${profile.dietary.glutenFree ? "on" : ""}`}
+            onClick={() => updateDietary("glutenFree")}
+          >
+            Gluten-Free
+          </button>
+        </div>
 
         <textarea
           placeholder="Allergies or notes (e.g. no peanuts, lactose intolerant)"
@@ -316,16 +633,17 @@ function ProfilePage({ profile, setProfile }) {
         />
       </section>
 
-      <section className="card">
+      <section className="card gradient-card profile-card">
         <h3>Weekly Cooking Time</h3>
 
         {WEEK_DAYS.map((day) => (
-          <div key={day} className="day-time">
+          <div key={day} className="day-time interactive-row">
             <label htmlFor={`time-${day}`}>{day}</label>
             <input
               id={`time-${day}`}
               type="number"
               min="0"
+              max="480"
               placeholder="Minutes"
               value={profile.weeklyTime[day]}
               onChange={(event) => updateDayTime(day, event.target.value)}
@@ -333,33 +651,43 @@ function ProfilePage({ profile, setProfile }) {
           </div>
         ))}
       </section>
+
+      <button className="save-btn" type="button" onClick={onSave} disabled={saving}>
+        {saving ? "Saving profile..." : "Save Profile"}
+      </button>
     </>
   );
 }
 
-function SettingsPage({ settings, setSettings }) {
+function SettingsPage({ settings, setSettings, onSave, syncMessage, saving }) {
   return (
     <>
-      <h2>Settings</h2>
+      <h2 className="section-title">Settings</h2>
+      <p className="sync-line">{syncMessage}</p>
 
-      <section className="card">
-        <label>
-          <input
-            type="checkbox"
-            checked={settings.notifications}
-            onChange={() => setSettings((current) => ({ ...current, notifications: !current.notifications }))}
-          />
-          Enable notifications
-        </label>
+      <section className="card gradient-card settings-card">
+        <h3>Experience</h3>
+        <div className="interactive-row">
+          <span>Enable notifications</span>
+          <button
+            type="button"
+            className={`toggle-switch ${settings.notifications ? "on" : ""}`}
+            onClick={() => setSettings((current) => ({ ...current, notifications: !current.notifications }))}
+          >
+            {settings.notifications ? "On" : "Off"}
+          </button>
+        </div>
 
-        <label>
-          <input
-            type="checkbox"
-            checked={settings.quickRecipes}
-            onChange={() => setSettings((current) => ({ ...current, quickRecipes: !current.quickRecipes }))}
-          />
-          Show quick recipes first
-        </label>
+        <div className="interactive-row">
+          <span>Show quick recipes first</span>
+          <button
+            type="button"
+            className={`toggle-switch ${settings.quickRecipes ? "on" : ""}`}
+            onClick={() => setSettings((current) => ({ ...current, quickRecipes: !current.quickRecipes }))}
+          >
+            {settings.quickRecipes ? "On" : "Off"}
+          </button>
+        </div>
 
         <label htmlFor="units">Units</label>
         <select
@@ -371,7 +699,77 @@ function SettingsPage({ settings, setSettings }) {
           <option value="imperial">Imperial</option>
         </select>
       </section>
+
+      <button className="save-btn" type="button" onClick={onSave} disabled={saving}>
+        {saving ? "Saving settings..." : "Save Settings"}
+      </button>
     </>
+  );
+}
+
+function CursorAura() {
+  const [enabled, setEnabled] = useState(false);
+  const [position, setPosition] = useState({ x: -100, y: -100 });
+  const [pressed, setPressed] = useState(false);
+
+  useEffect(() => {
+    const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const finePointer = window.matchMedia("(pointer: fine)").matches;
+    if (prefersReducedMotion || !finePointer) return;
+
+    setEnabled(true);
+    const onMove = (event) => setPosition({ x: event.clientX, y: event.clientY });
+    const onDown = () => setPressed(true);
+    const onUp = () => setPressed(false);
+
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mousedown", onDown);
+    window.addEventListener("mouseup", onUp);
+
+    return () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mousedown", onDown);
+      window.removeEventListener("mouseup", onUp);
+    };
+  }, []);
+
+  if (!enabled) return null;
+
+  return (
+    <>
+      <div
+        className={`cursor-aura ${pressed ? "pressed" : ""}`}
+        style={{
+          left: `${position.x}px`,
+          top: `${position.y}px`
+        }}
+      />
+      <div
+        className="cursor-core"
+        style={{
+          left: `${position.x}px`,
+          top: `${position.y}px`
+        }}
+      />
+    </>
+  );
+}
+
+function ConfettiBurst() {
+  const pieces = Array.from({ length: 20 }, (_, idx) => idx);
+  return (
+    <div className="confetti-wrap" aria-hidden="true">
+      {pieces.map((piece) => (
+        <span
+          key={piece}
+          className="confetti-piece"
+          style={{
+            left: `${(piece * 5) % 100}%`,
+            animationDelay: `${(piece % 6) * 0.04}s`
+          }}
+        />
+      ))}
+    </div>
   );
 }
 
