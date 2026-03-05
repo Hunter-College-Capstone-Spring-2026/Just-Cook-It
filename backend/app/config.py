@@ -13,11 +13,12 @@ class Settings:
     port: int = int(os.getenv("PORT", "4000"))
     frontend_origin: str = os.getenv("FRONTEND_ORIGIN", "http://localhost:5173")
 
+    # Supabase
     supabase_url: str = os.getenv("SUPABASE_URL", "")
     supabase_anon_key: str = os.getenv("SUPABASE_ANON_KEY", "")
-    supabase_user_table: str = os.getenv("SUPABASE_USER_TABLE", "User")
-    supabase_state_table: str = os.getenv("SUPABASE_STATE_TABLE", "UserAppState")
+    supabase_service_role_key: str = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
 
+    # Spoonacular
     spoonacular_api_key: str = os.getenv("SPOONACULAR_API_KEY", "")
     spoonacular_base_url: str = os.getenv("SPOONACULAR_BASE_URL", "https://api.spoonacular.com")
 

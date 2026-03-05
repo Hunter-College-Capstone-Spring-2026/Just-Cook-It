@@ -28,7 +28,7 @@ SPOONACULAR_BASE_URL=https://api.spoonacular.com
 
 Start backend:
 ```bash
-uvicorn app.main:app --host 0.0.0.0 --port 4000 --reload
+python main.py
 ```
 
 ## 2) Frontend Setup

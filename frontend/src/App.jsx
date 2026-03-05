@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:4000";
 
+
 const WEEK_DAYS = [
   "Monday",
   "Tuesday",
@@ -549,6 +550,15 @@ function HomePage({ settings }) {
 }
 
 function ProfilePage({ profile, setProfile, onSave, syncMessage, saving }) {
+  const [restrictions, setRestrictions] = useState([]);
+
+  useEffect(() => {
+    fetch(`${API_BASE_URL}/api/dietary-restrictions`)
+      .then((r) => r.json())
+      .then((data) => setRestrictions(Array.isArray(data) ? data : []))
+      .catch(() => setRestrictions([]));
+  }, []);
+
   const updateDietary = (name) => {
     setProfile((current) => ({
       ...current,
@@ -595,37 +605,22 @@ function ProfilePage({ profile, setProfile, onSave, syncMessage, saving }) {
 
       <section className="card gradient-card profile-card">
         <h3>Dietary Preferences & Restrictions</h3>
-        <div className="preference-grid">
-          <button
-            type="button"
-            className={`toggle-tile ${profile.dietary.vegetarian ? "on" : ""}`}
-            onClick={() => updateDietary("vegetarian")}
-          >
-            Vegetarian
-          </button>
-          <button
-            type="button"
-            className={`toggle-tile ${profile.dietary.vegan ? "on" : ""}`}
-            onClick={() => updateDietary("vegan")}
-          >
-            Vegan
-          </button>
-          <button
-            type="button"
-            className={`toggle-tile ${profile.dietary.halal ? "on" : ""}`}
-            onClick={() => updateDietary("halal")}
-          >
-            Halal
-          </button>
-          <button
-            type="button"
-            className={`toggle-tile ${profile.dietary.glutenFree ? "on" : ""}`}
-            onClick={() => updateDietary("glutenFree")}
-          >
-            Gluten-Free
-          </button>
-        </div>
-
+        {restrictions.length === 0 ? (
+          <p style={{ color: "var(--text-secondary)", fontSize: "0.9rem" }}>Loading...</p>
+        ) : (
+          <div className="preference-grid">
+            {restrictions.map((r) => (
+              <button
+                key={r.restriction_id}
+                type="button"
+                className={`toggle-tile ${profile.dietary[r.dietary_restriction_name] ? "on" : ""}`}
+                onClick={() => updateDietary(r.dietary_restriction_name)}
+              >
+                {r.dietary_restriction_name.charAt(0).toUpperCase() + r.dietary_restriction_name.slice(1)}
+              </button>
+            ))}
+          </div>
+        )}
         <textarea
           placeholder="Allergies or notes (e.g. no peanuts, lactose intolerant)"
           value={profile.notes}
