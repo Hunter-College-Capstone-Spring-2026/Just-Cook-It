@@ -1,5 +1,6 @@
 import requests
-from app.utils.config import SPOONACULAR_API_KEY
+from app.utils.config import settings
+
 
 BASE_URL = "https://api.spoonacular.com"
 
@@ -7,7 +8,7 @@ def search_recipes(query: str, max_ready_time: int | None = None):
     url = f"{BASE_URL}/recipes/complexSearch"
 
     params = {
-        "apiKey": SPOONACULAR_API_KEY,
+        "apiKey": settings.spoonacular_api_key,
         "query": query,
         "addRecipeInformation": True
     }
