@@ -1,0 +1,1 @@
+# To let Python treat the routes directory as a package, we need to add an __init__.py file. This file can be empty, but it allows us to import modules from the routes directory in our main application file (main.py).
