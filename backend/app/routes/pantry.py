@@ -14,7 +14,7 @@ router = APIRouter(
 def get_pantry(userId: str = Query(..., min_length=3)):
     return {"userId": userId, "ingredients": get_user_pantry(userId)}
 
-
+# TODO: add parameters
 @router.post("/add")
 def add_to_pantry(payload: PantryAddRequest):
     if not payload.ingredients:

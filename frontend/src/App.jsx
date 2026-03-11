@@ -463,6 +463,7 @@ function HomePage({ settings, userId }) {
         id: recipe.recipeId,
         title: recipe.recipeName,
         imageUrl: recipe.recipeImageUrl,
+        readyTime: recipe.readyInMinutes,
         usedIngredientCount: recipe.usedIngredientCount,
         missedIngredientCount: recipe.missedIngredientCount,
         missedIngredients: recipe.missedIngredients || []
@@ -700,7 +701,7 @@ function HomePage({ settings, userId }) {
               </div>
 
               <div>
-                <label htmlFor="ignorePantryToggle">Ignore pantry staples</label>
+                <label htmlFor="ignorePantryToggle">Ignore common ingredient staples (e.g. salt, water)</label>
                 <button
                   id="ignorePantryToggle"
                   type="button"
@@ -799,8 +800,8 @@ function HomePage({ settings, userId }) {
                 className={`recipe-card gradient-card ${selectedRecipeId === recipe.id ? "selected-recipe" : ""}`}
               >
                 <p className="recipe-title">{recipe.title}</p>
-                <p>
-                  Uses {recipe.usedIngredientCount} | Missing {recipe.missedIngredientCount}
+                <p className="recipe-meta">
+                  ⏱ {recipe.readyTime ?? "?"} min • Uses {recipe.usedIngredientCount} • Missing {recipe.missedIngredientCount}
                 </p>
                 <p>
                   Missing ingredients: {recipe.missedIngredients.length ? recipe.missedIngredients.join(", ") : "None"}
