@@ -200,7 +200,7 @@ function App() {
 
       <main>
         <section key={activePage} className="page-shell" aria-live="polite">
-          {activePage === "home" && <HomePage settings={settings} userId={userId} />}
+          {activePage === "home" && <HomePage settings={settings} userId={userId} profile={profile} />}
           {activePage === "profile" && (
             <ProfilePage
               profile={profile}
@@ -238,7 +238,7 @@ function App() {
   );
 }
 
-function HomePage({ settings, userId }) {
+function HomePage({ settings, userId, profile }) {
   const [inputValue, setInputValue] = useState("");
   const [maxTimeMinutes, setMaxTimeMinutes] = useState("");
   const [sortPriority, setSortPriority] = useState("missing"); // default: fewer missing ingredients
@@ -269,7 +269,8 @@ function HomePage({ settings, userId }) {
   const [commitmentPosted, setCommitmentPosted] = useState(false);
   const [rewardUnlockedToday, setRewardUnlockedToday] = useState(false);
 
-  const welcomeText = "Cook from what you have";
+  const firstName = (profile?.name || "").trim().split(" ")[0];
+  const welcomeText = firstName ? `${firstName}, cook from what you have` : "Cook from what you have";
   const characters = useMemo(() => welcomeText.split(""), [welcomeText]);
   const supportiveMessage = useMemo(() => {
     const hour = new Date().getHours();
@@ -623,12 +624,12 @@ function HomePage({ settings, userId }) {
         {!onboardingDismissed ? (
           <section className="card gradient-card onboarding-card">
             <div className="onboarding-top">
-              <h4>Quick start</h4>
+              <h4>Start here</h4>
               <button type="button" className="chip-btn" onClick={() => setOnboardingDismissed(true)}>
                 Hide
               </button>
             </div>
-            <p>Add ingredients. Search. Save if needed.</p>
+            <p>Use what you already have. Save what you want to keep.</p>
             <div className="progress-strip" aria-label="Onboarding progress">
               <div className="progress-fill" style={{ width: `${onboardingProgress}%` }} />
             </div>
@@ -638,15 +639,17 @@ function HomePage({ settings, userId }) {
           <p>{supportiveMessage}</p>
         </div>
         <section className="fogg-panel gradient-card">
-          <h4>Next step</h4>
-          <p>Search now.</p>
+          <h4>Your kitchen</h4>
+          <p>{pantryItems.length > 0 ? `${pantryItems.length} pantry items saved.` : "Start with a few ingredients."}</p>
           <div className="progress-strip" aria-label="Task progress">
             <div className="progress-fill" style={{ width: `${progressPercent}%` }} />
           </div>
           <p className="progress-copy">{progressStepsDone}/3 done</p>
         </section>
         <section className="initial-search-panel gradient-card" aria-label="Search by ingredients">
-          <h3 className="initial-search-title wave-title">Search by ingredients</h3>
+          <h3 className="initial-search-title wave-title">
+            {firstName ? `${firstName}, what's in your kitchen?` : "What's in your kitchen?"}
+          </h3>
           {!online ? <p className="sync-line">Offline. Pantry will sync later.</p> : null}
           {queuedPantryAdds.length > 0 ? <p className="sync-line">Queued: {queuedPantryAdds.length}</p> : null}
 
