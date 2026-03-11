@@ -16,8 +16,15 @@ const defaultProfile = {
 
 const defaultSettings = {
   notifications: true,
+  emailRecipeUpdates: true,
+  weeklyDigestEmail: false,
   quickRecipes: true,
+  defaultResultCount: 10,
+  defaultMaxCookTime: 0,
   units: "metric",
+  language: "en",
+  theme: "light",
+  publicProfile: false,
   allowUsageAnalytics: false,
   allowProgressNudges: true
 };
@@ -236,7 +243,9 @@ function HomePage({ settings, userId }) {
   const [maxTimeMinutes, setMaxTimeMinutes] = useState("");
   const [sortPriority, setSortPriority] = useState("missing"); // default: fewer missing ingredients
   const [ignorePantry, setIgnorePantry] = useState(true);
-  const [resultCount, setResultCount] = useState(settings.quickRecipes ? 5 : 10);
+  const [resultCount, setResultCount] = useState(
+    Number(settings.defaultResultCount || (settings.quickRecipes ? 5 : 10))
+  );
   const [minUsedFilter, setMinUsedFilter] = useState("");
   const [maxMissingFilter, setMaxMissingFilter] = useState("");
   const [showNudge, setShowNudge] = useState(false);
@@ -418,8 +427,8 @@ function HomePage({ settings, userId }) {
   }, [online, userId]);
 
   useEffect(() => {
-    setResultCount(settings.quickRecipes ? 5 : 10);
-  }, [settings.quickRecipes]);
+    setResultCount(Number(settings.defaultResultCount || (settings.quickRecipes ? 5 : 10)));
+  }, [settings.defaultResultCount, settings.quickRecipes]);
 
   const parseIngredients = () =>
     inputValue
@@ -448,8 +457,9 @@ function HomePage({ settings, userId }) {
         ranking: sortPriority === "used" ? "1" : "2",
         ignorePantry: String(ignorePantry)
       });
-      if (maxTimeMinutes) {
-        query.set("maxTime", maxTimeMinutes);
+      const chosenMaxTime = maxTimeMinutes || String(settings.defaultMaxCookTime || "");
+      if (chosenMaxTime) {
+        query.set("maxTime", chosenMaxTime);
       }
       const response = await fetch(`${API_BASE_URL}/api/spoonacular/recipes/search?${query.toString()}`);
 
@@ -941,6 +951,10 @@ function ProfilePage({ profile, setProfile, onSave, syncMessage, saving }) {
 }
 
 function SettingsPage({ settings, setSettings, onSave, syncMessage, saving }) {
+  const updateSetting = (key, value) => {
+    setSettings((current) => ({ ...current, [key]: value }));
+  };
+
   const requestNotificationPermission = async () => {
     if (!("Notification" in window)) return;
     if (Notification.permission === "default") {
@@ -964,7 +978,7 @@ function SettingsPage({ settings, setSettings, onSave, syncMessage, saving }) {
             type="button"
             className={`toggle-switch ${settings.notifications ? "on" : ""}`}
             onClick={async () => {
-              setSettings((current) => ({ ...current, notifications: !current.notifications }));
+              updateSetting("notifications", !settings.notifications);
               await requestNotificationPermission();
             }}
           >
@@ -973,11 +987,33 @@ function SettingsPage({ settings, setSettings, onSave, syncMessage, saving }) {
         </div>
 
         <div className="interactive-row">
+          <span>Email recipe updates</span>
+          <button
+            type="button"
+            className={`toggle-switch ${settings.emailRecipeUpdates ? "on" : ""}`}
+            onClick={() => updateSetting("emailRecipeUpdates", !settings.emailRecipeUpdates)}
+          >
+            {settings.emailRecipeUpdates ? "On" : "Off"}
+          </button>
+        </div>
+
+        <div className="interactive-row">
+          <span>Weekly digest email</span>
+          <button
+            type="button"
+            className={`toggle-switch ${settings.weeklyDigestEmail ? "on" : ""}`}
+            onClick={() => updateSetting("weeklyDigestEmail", !settings.weeklyDigestEmail)}
+          >
+            {settings.weeklyDigestEmail ? "On" : "Off"}
+          </button>
+        </div>
+
+        <div className="interactive-row">
           <span>Show quick recipes first</span>
           <button
             type="button"
             className={`toggle-switch ${settings.quickRecipes ? "on" : ""}`}
-            onClick={() => setSettings((current) => ({ ...current, quickRecipes: !current.quickRecipes }))}
+            onClick={() => updateSetting("quickRecipes", !settings.quickRecipes)}
           >
             {settings.quickRecipes ? "On" : "Off"}
           </button>
@@ -987,18 +1023,62 @@ function SettingsPage({ settings, setSettings, onSave, syncMessage, saving }) {
         <select
           id="units"
           value={settings.units}
-          onChange={(event) => setSettings((current) => ({ ...current, units: event.target.value }))}
+          onChange={(event) => updateSetting("units", event.target.value)}
         >
           <option value="metric">Metric</option>
           <option value="imperial">Imperial</option>
         </select>
+
+        <label htmlFor="language">Language</label>
+        <select
+          id="language"
+          value={settings.language}
+          onChange={(event) => updateSetting("language", event.target.value)}
+        >
+          <option value="en">English</option>
+          <option value="es">Spanish</option>
+          <option value="fr">French</option>
+        </select>
+
+        <label htmlFor="theme">Theme</label>
+        <select
+          id="theme"
+          value={settings.theme}
+          onChange={(event) => updateSetting("theme", event.target.value)}
+        >
+          <option value="light">Light</option>
+          <option value="system">System</option>
+        </select>
+
+        <label htmlFor="defaultResultCount">Default result count</label>
+        <select
+          id="defaultResultCount"
+          value={settings.defaultResultCount}
+          onChange={(event) => updateSetting("defaultResultCount", Number(event.target.value))}
+        >
+          <option value={5}>5</option>
+          <option value={10}>10</option>
+          <option value={15}>15</option>
+          <option value={20}>20</option>
+        </select>
+
+        <label htmlFor="defaultMaxCookTime">Default max cook time (minutes)</label>
+        <input
+          id="defaultMaxCookTime"
+          type="number"
+          min="0"
+          max="300"
+          placeholder="0 means no default limit"
+          value={settings.defaultMaxCookTime}
+          onChange={(event) => updateSetting("defaultMaxCookTime", Number(event.target.value || 0))}
+        />
 
         <div className="interactive-row">
           <span>Allow usage analytics</span>
           <button
             type="button"
             className={`toggle-switch ${settings.allowUsageAnalytics ? "on" : ""}`}
-            onClick={() => setSettings((current) => ({ ...current, allowUsageAnalytics: !current.allowUsageAnalytics }))}
+            onClick={() => updateSetting("allowUsageAnalytics", !settings.allowUsageAnalytics)}
           >
             {settings.allowUsageAnalytics ? "On" : "Off"}
           </button>
@@ -1009,9 +1089,20 @@ function SettingsPage({ settings, setSettings, onSave, syncMessage, saving }) {
           <button
             type="button"
             className={`toggle-switch ${settings.allowProgressNudges ? "on" : ""}`}
-            onClick={() => setSettings((current) => ({ ...current, allowProgressNudges: !current.allowProgressNudges }))}
+            onClick={() => updateSetting("allowProgressNudges", !settings.allowProgressNudges)}
           >
             {settings.allowProgressNudges ? "On" : "Off"}
+          </button>
+        </div>
+
+        <div className="interactive-row">
+          <span>Public profile</span>
+          <button
+            type="button"
+            className={`toggle-switch ${settings.publicProfile ? "on" : ""}`}
+            onClick={() => updateSetting("publicProfile", !settings.publicProfile)}
+          >
+            {settings.publicProfile ? "On" : "Off"}
           </button>
         </div>
       </section>

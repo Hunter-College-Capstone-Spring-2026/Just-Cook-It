@@ -109,7 +109,20 @@ def save_user_profile(payload: dict[str, Any]):
 
 
 def get_user_settings(user_id: str):
-    defaults = {"quickRecipes": True, "notifications": True, "units": "metric"}
+    defaults = {
+        "notifications": True,
+        "emailRecipeUpdates": True,
+        "weeklyDigestEmail": False,
+        "quickRecipes": True,
+        "defaultResultCount": 10,
+        "defaultMaxCookTime": 0,
+        "units": "metric",
+        "language": "en",
+        "theme": "light",
+        "publicProfile": False,
+        "allowUsageAnalytics": False,
+        "allowProgressNudges": True,
+    }
     try:
         state_row = _safe_first(
             supabase.table(settings.supabase_state_table).select("*").eq("user_id", user_id).limit(1).execute().data
@@ -126,17 +139,41 @@ def save_user_settings(payload: dict[str, Any]):
         return {"saved": False, "warning": "userId is required."}
 
     warning = None
+    def _clamp_int(value: Any, default: int, min_value: int, max_value: int) -> int:
+        try:
+            parsed = int(value)
+        except (TypeError, ValueError):
+            return default
+        return max(min_value, min(max_value, parsed))
+
     try:
         current_state = _safe_first(
             supabase.table(settings.supabase_state_table).select("*").eq("user_id", user_id).limit(1).execute().data
         )
         state_blob = _get_state_blob(current_state)
+        current_settings = _safe_dict(state_blob.get("settings"))
         state_blob["settings"] = {
-            "quickRecipes": bool(payload.get("quickRecipes", True)),
-            "notifications": bool(payload.get("notifications", True)),
-            "units": payload.get("units", "metric"),
-            "allowUsageAnalytics": bool(payload.get("allowUsageAnalytics", False)),
-            "allowProgressNudges": bool(payload.get("allowProgressNudges", True)),
+            **current_settings,
+            "notifications": bool(payload.get("notifications", current_settings.get("notifications", True))),
+            "emailRecipeUpdates": bool(payload.get("emailRecipeUpdates", current_settings.get("emailRecipeUpdates", True))),
+            "weeklyDigestEmail": bool(payload.get("weeklyDigestEmail", current_settings.get("weeklyDigestEmail", False))),
+            "quickRecipes": bool(payload.get("quickRecipes", current_settings.get("quickRecipes", True))),
+            "defaultResultCount": _clamp_int(
+                payload.get("defaultResultCount", current_settings.get("defaultResultCount", 10)), 10, 5, 20
+            ),
+            "defaultMaxCookTime": _clamp_int(
+                payload.get("defaultMaxCookTime", current_settings.get("defaultMaxCookTime", 0)), 0, 0, 300
+            ),
+            "units": payload.get("units", current_settings.get("units", "metric")),
+            "language": payload.get("language", current_settings.get("language", "en")),
+            "theme": payload.get("theme", current_settings.get("theme", "light")),
+            "publicProfile": bool(payload.get("publicProfile", current_settings.get("publicProfile", False))),
+            "allowUsageAnalytics": bool(
+                payload.get("allowUsageAnalytics", current_settings.get("allowUsageAnalytics", False))
+            ),
+            "allowProgressNudges": bool(
+                payload.get("allowProgressNudges", current_settings.get("allowProgressNudges", True))
+            ),
         }
         supabase.table(settings.supabase_state_table).upsert(
             {"user_id": user_id, "state_json": state_blob},
