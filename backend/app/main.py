@@ -1,8 +1,11 @@
 from fastapi import FastAPI
 from app.utils.config import settings
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi import Query
 from app.routes import recipes, pantry, user
-from app.services.supabase_service import get_dietary_restrictions
+from app.models.ingredient import PantryAddRequest
+from app.services.supabase_service import add_user_pantry_ingredients, get_dietary_restrictions, get_user_pantry
+from app.services.spoonacular_service import search_recipes_by_ingredients
 
 app = FastAPI()
 
@@ -35,6 +38,34 @@ def health():
 @app.get("/api/dietary-restrictions")
 def dietary_restrictions():
     return get_dietary_restrictions()
+
+
+@app.get("/api/spoonacular/recipes/search")
+def search_recipes_api(
+    ingredients: str = Query(..., min_length=1),
+    number: int = Query(10, ge=1, le=20),
+    ranking: int = Query(1, ge=1, le=2),
+    ignorePantry: bool = Query(True),
+    maxTime: int | None = Query(None, ge=1, le=300),
+):
+    return search_recipes_by_ingredients(
+        ingredients=ingredients,
+        number=number,
+        ranking=ranking,
+        ignore_pantry=ignorePantry,
+        max_ready_time=maxTime,
+    )
+
+
+@app.get("/api/pantry")
+def get_pantry_api(userId: str = Query(..., min_length=3)):
+    return {"userId": userId, "ingredients": get_user_pantry(userId)}
+
+
+@app.post("/api/pantry/add")
+def add_pantry_api(payload: PantryAddRequest):
+    ingredients = add_user_pantry_ingredients(payload.user_id, [item.name for item in payload.ingredients])
+    return {"ok": True, "userId": payload.user_id, "ingredients": ingredients}
 
 
 # remove later since we can run with `uvicorn app.main:app` in terminal, but this allows us to run with `python app/main.py` which is a bit more intuitive for development
