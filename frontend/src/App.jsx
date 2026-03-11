@@ -37,6 +37,7 @@ function generateUserId() {
 }
 
 function useLocalStorage(key, initialValue) {
+  // Keep core user state usable even when the backend is unavailable.
   const [value, setValue] = useState(() => {
     try {
       const existing = window.localStorage.getItem(key);
@@ -47,6 +48,7 @@ function useLocalStorage(key, initialValue) {
   });
 
   useEffect(() => {
+    // Mirror React state back into local storage so refreshes resume where the user left off.
     window.localStorage.setItem(key, JSON.stringify(value));
   }, [key, value]);
 
@@ -255,10 +257,6 @@ function HomePage({ settings, userId }) {
   const [onboardingDismissed, setOnboardingDismissed] = useLocalStorage("jci_onboarding_dismissed", false);
   const [selectedRecipeId, setSelectedRecipeId] = useState("");
   const [celebrate, setCelebrate] = useState(false);
-  const [feedback, setFeedback] = useState("");
-  const [commitmentName, setCommitmentName] = useState("");
-  const [commitmentPosted, setCommitmentPosted] = useState(false);
-  const [rewardUnlockedToday, setRewardUnlockedToday] = useState(false);
 
   const welcomeText = "Welcome!";
   const characters = useMemo(() => welcomeText.split(""), [welcomeText]);
@@ -369,6 +367,7 @@ function HomePage({ settings, userId }) {
     let cancelled = false;
 
     const flushQueue = async () => {
+      // Replay offline pantry writes in order and keep only the batches that still fail.
       const remaining = [];
       for (const batch of queuedPantryAdds) {
         try {
@@ -422,6 +421,7 @@ function HomePage({ settings, userId }) {
   }, [settings.quickRecipes]);
 
   const parseIngredients = () =>
+    // Normalize the free-text input into the exact ingredient list used by both search and pantry flows.
     inputValue
       .split(",")
       .map((item) => item.trim())
@@ -470,6 +470,7 @@ function HomePage({ settings, userId }) {
       }));
       const minUsedValue = minUsedFilter ? Number(minUsedFilter) : null;
       const maxMissingValue = maxMissingFilter ? Number(maxMissingFilter) : null;
+      // Apply stricter local filtering/sorting so the UI behavior stays predictable even if the upstream API ranking shifts.
       const filteredRecipes = mappedRecipes.filter((recipe) => {
         if (minUsedValue !== null && recipe.usedIngredientCount < minUsedValue) return false;
         if (maxMissingValue !== null && recipe.missedIngredientCount > maxMissingValue) return false;
@@ -516,6 +517,7 @@ function HomePage({ settings, userId }) {
     setPantryError("");
     setPantryMessage("");
     const previousPantry = pantryItems;
+    // Optimistically show the ingredients in pantry before the request finishes to keep the UI responsive.
     const optimistic = Array.from(new Set([...pantryItems, ...ingredientList]));
     setPantryItems(optimistic);
     try {
@@ -576,25 +578,12 @@ function HomePage({ settings, userId }) {
   };
 
   const completeRecipePlan = (recipeId) => {
+    // "Planned" is currently a local commitment state plus lightweight celebration, not a persisted meal plan.
     setSelectedRecipeId(recipeId);
     setCelebrate(true);
     playSuccessChime();
 
-    const today = new Date().toISOString().slice(0, 10);
-    const lastRewardDate = window.localStorage.getItem("jci_reward_day");
-    if (lastRewardDate !== today) {
-      setRewardUnlockedToday(true);
-      window.localStorage.setItem("jci_reward_day", today);
-    } else {
-      setRewardUnlockedToday(false);
-    }
-
     setTimeout(() => setCelebrate(false), 1000);
-  };
-
-  const postCommitment = () => {
-    if (!commitmentName.trim()) return;
-    setCommitmentPosted(true);
   };
 
   return (
@@ -820,43 +809,6 @@ function HomePage({ settings, userId }) {
                 Great call. You completed a high-pressure decision. This helps tonight and reduces tomorrow's stress
                 too.
               </p>
-              {rewardUnlockedToday ? (
-                <p className="reward-line">Scarce reward unlocked: Golden Ladle token for today.</p>
-              ) : (
-                <p className="reward-line">Today's scarce reward already claimed. Keep your streak tomorrow.</p>
-              )}
-
-              <div className="commitment-box">
-                <label htmlFor="commitmentName">Who are you making this for?</label>
-                <input
-                  id="commitmentName"
-                  type="text"
-                  placeholder="friend, sibling, roommate..."
-                  value={commitmentName}
-                  onChange={(event) => {
-                    setCommitmentName(event.target.value);
-                    setCommitmentPosted(false);
-                  }}
-                />
-                <button type="button" onClick={postCommitment}>
-                  Commit
-                </button>
-                {commitmentPosted ? (
-                  <p className="commitment-line">Commitment posted: You will cook for {commitmentName} tonight.</p>
-                ) : null}
-              </div>
-
-              <div className="survey-box">
-                <p>How supported did you feel by this flow?</p>
-                <div className="survey-actions">
-                  {["Too busy", "Okay", "Very supported"].map((option) => (
-                    <button key={option} type="button" onClick={() => setFeedback(option)}>
-                      {option}
-                    </button>
-                  ))}
-                </div>
-                {feedback ? <p className="feedback-line">Thanks. Feedback saved: {feedback}</p> : null}
-              </div>
             </section>
           ) : null}
         </section>

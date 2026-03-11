@@ -24,6 +24,7 @@ def _safe_dict(value: Any) -> dict[str, Any]:
 
 
 def _get_state_blob(state_row: dict[str, Any] | None) -> dict[str, Any]:
+    # Different schema iterations stored app state under different JSON columns; accept any known shape.
     if not state_row:
         return {}
     for key in ("state_json", "app_state", "state", "payload"):
@@ -39,6 +40,7 @@ def get_dietary_restrictions():
 
 
 def get_user_profile(user_id: str):
+    # Profile data is split across the user table and the generic app-state blob, so we merge both sources here.
     profile: dict[str, Any] = {"userId": user_id, "name": "", "email": "", "dietary": {}, "notes": ""}
 
     try:
@@ -109,6 +111,7 @@ def save_user_profile(payload: dict[str, Any]):
 
 
 def get_user_settings(user_id: str):
+    # Settings live inside the shared state blob, with defaults filling gaps for first-run users.
     defaults = {"quickRecipes": True, "notifications": True, "units": "metric"}
     try:
         state_row = _safe_first(
@@ -149,6 +152,7 @@ def save_user_settings(payload: dict[str, Any]):
 
 
 def get_user_pantry(user_id: str):
+    # Pantry data may arrive either as denormalized names on the join table or via ingredient IDs from older rows.
     names: list[str] = []
     try:
         rows = (
@@ -187,6 +191,7 @@ def get_user_pantry(user_id: str):
 
 
 def add_user_pantry_ingredients(user_id: str, ingredients: list[str]):
+    # Write pantry items idempotently so retries and offline queue replays do not duplicate entries.
     normalized = [item.strip() for item in ingredients if item and item.strip()]
     if not normalized:
         return []

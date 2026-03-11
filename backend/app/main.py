@@ -67,8 +67,6 @@ def add_pantry_api(payload: PantryAddRequest):
     ingredients = add_user_pantry_ingredients(payload.user_id, [item.name for item in payload.ingredients])
     return {"ok": True, "userId": payload.user_id, "ingredients": ingredients}
 
-
-# remove later since we can run with `uvicorn app.main:app` in terminal, but this allows us to run with `python app/main.py` which is a bit more intuitive for development
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("app.main:app", host=settings.host, port=settings.port, reload=True)
