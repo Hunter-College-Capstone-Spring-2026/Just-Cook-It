@@ -264,13 +264,14 @@ button:focus-visible {
 }
 
 .pressure-banner {
-  margin: 0 auto 0.8rem;
+  margin: 0 auto 0.55rem;
   max-width: 620px;
   background: linear-gradient(135deg, rgba(255, 211, 184, 0.85), rgba(255, 237, 218, 0.9));
   border: 1px solid rgba(214, 111, 75, 0.18);
   border-radius: 14px;
   padding: 0.75rem 1rem;
   box-shadow: 0 8px 18px rgba(0, 0, 0, 0.06);
+  animation: slideLeftIn 0.55s cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
 .pressure-banner p {
@@ -280,11 +281,12 @@ button:focus-visible {
 }
 
 .fogg-panel {
-  margin: 0 auto 1rem;
+  margin: 0 auto 0.5rem;
   text-align: left;
   max-width: 680px;
   border-radius: 14px;
   padding: 0.9rem 1rem;
+  animation: slideRightIn 0.55s cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
 .fogg-panel h4 {
@@ -296,12 +298,34 @@ button:focus-visible {
 }
 
 .initial-search-panel {
-  margin: 1rem auto 0.6rem;
+  margin: 0.2rem auto 0.6rem;
   max-width: 760px;
   border: 1px solid rgba(214, 111, 75, 0.4);
   border-radius: 18px;
   padding: 1rem 1rem 1.1rem;
   background: linear-gradient(160deg, rgba(255, 255, 255, 0.95), rgba(255, 237, 224, 0.9));
+}
+
+@keyframes slideLeftIn {
+  from {
+    opacity: 0;
+    transform: translateX(26px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes slideRightIn {
+  from {
+    opacity: 0;
+    transform: translateX(-26px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
 }
 
 .initial-search-title {
@@ -366,6 +390,46 @@ button:focus-visible {
 .filter-grid label {
   margin: 0 0 0.2rem;
   font-size: 0.9rem;
+}
+
+.filter-toggle-block {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.tooltip-label {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  cursor: help;
+  margin-bottom: 0.15rem;
+}
+
+.tooltip-text {
+  position: absolute;
+  left: 0;
+  bottom: calc(100% + 8px);
+  width: 235px;
+  padding: 0.45rem 0.6rem;
+  border-radius: 10px;
+  background: rgba(74, 44, 29, 0.96);
+  color: #fff8f2;
+  font-size: 0.78rem;
+  line-height: 1.35;
+  box-shadow: 0 10px 18px rgba(0, 0, 0, 0.18);
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(4px);
+  transition: opacity 0.18s ease, transform 0.18s ease;
+  z-index: 5;
+}
+
+.tooltip-label:hover .tooltip-text,
+.tooltip-label:focus-within .tooltip-text {
+  opacity: 1;
+  transform: translateY(0);
 }
 
 .search-fields label {

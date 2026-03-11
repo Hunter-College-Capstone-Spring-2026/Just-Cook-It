@@ -30,10 +30,10 @@ const defaultSettings = {
 };
 
 const SUPPORTIVE_LINES = [
-  "You are doing a lot. Let's make this one thing easy.",
-  "No pressure. We can find something simple in under a minute.",
-  "You showed up. That's enough for today. We'll handle the recipe part.",
-  "Take one breath. Type what you have, and we will do the heavy lifting."
+  "Find something fast.",
+  "Start with what you have.",
+  "Pick a recipe and go.",
+  "Search in seconds."
 ];
 
 function generateUserId() {
@@ -269,7 +269,7 @@ function HomePage({ settings, userId }) {
   const [commitmentPosted, setCommitmentPosted] = useState(false);
   const [rewardUnlockedToday, setRewardUnlockedToday] = useState(false);
 
-  const welcomeText = "Welcome!";
+  const welcomeText = "Cook from what you have";
   const characters = useMemo(() => welcomeText.split(""), [welcomeText]);
   const supportiveMessage = useMemo(() => {
     const hour = new Date().getHours();
@@ -561,6 +561,10 @@ function HomePage({ settings, userId }) {
     setInputValue((current) => (current ? `${current}, ${value}` : value));
   };
 
+  const clearIngredients = () => {
+    setInputValue("");
+  };
+
   const quickSets = ["rice", "eggs", "chicken", "onion", "tomato", "spinach", "beans"];
 
   const playSuccessChime = () => {
@@ -619,12 +623,12 @@ function HomePage({ settings, userId }) {
         {!onboardingDismissed ? (
           <section className="card gradient-card onboarding-card">
             <div className="onboarding-top">
-              <h4>Start in under 60 seconds</h4>
+              <h4>Quick start</h4>
               <button type="button" className="chip-btn" onClick={() => setOnboardingDismissed(true)}>
-                Dismiss
+                Hide
               </button>
             </div>
-            <p>1) Add ingredients, 2) search, 3) save to pantry.</p>
+            <p>Add ingredients. Search. Save if needed.</p>
             <div className="progress-strip" aria-label="Onboarding progress">
               <div className="progress-fill" style={{ width: `${onboardingProgress}%` }} />
             </div>
@@ -634,43 +638,43 @@ function HomePage({ settings, userId }) {
           <p>{supportiveMessage}</p>
         </div>
         <section className="fogg-panel gradient-card">
-          <h4>Your next win</h4>
-          <p>
-            Motivation: protect your energy now, and your future time later. Ability: use one ingredient if needed.
-            Prompt: press <strong>Cook it!</strong> now.
-          </p>
+          <h4>Next step</h4>
+          <p>Search now.</p>
           <div className="progress-strip" aria-label="Task progress">
             <div className="progress-fill" style={{ width: `${progressPercent}%` }} />
           </div>
-          <p className="progress-copy">Progress: {progressStepsDone}/3 actions complete</p>
+          <p className="progress-copy">{progressStepsDone}/3 done</p>
         </section>
         <section className="initial-search-panel gradient-card" aria-label="Search by ingredients">
-          <h3 className="initial-search-title wave-title">What do you have in your kitchen?</h3>
-          {!online ? <p className="sync-line">Offline mode: searches may fail, pantry adds will queue.</p> : null}
-          {queuedPantryAdds.length > 0 ? <p className="sync-line">Queued pantry updates: {queuedPantryAdds.length}</p> : null}
+          <h3 className="initial-search-title wave-title">Search by ingredients</h3>
+          {!online ? <p className="sync-line">Offline. Pantry will sync later.</p> : null}
+          {queuedPantryAdds.length > 0 ? <p className="sync-line">Queued: {queuedPantryAdds.length}</p> : null}
 
           <div className="multi-filter-panel" aria-label="Search filters">
-            <p className="filter-title">Sort priority</p>
+            <p className="filter-title">Filters</p>
             <div className="priority-toggle-group" role="group" aria-label="Sort priority">
               <button
                 type="button"
                 className={`priority-toggle ${sortPriority === "missing" ? "active" : ""}`}
                 onClick={() => setSortPriority("missing")}
               >
-                Fewer missing (default)
+                Fewer missing
               </button>
               <button
                 type="button"
                 className={`priority-toggle ${sortPriority === "used" ? "active" : ""}`}
                 onClick={() => setSortPriority("used")}
               >
-                Most used
+                More used
               </button>
             </div>
 
             <div className="filter-grid">
               <div>
-                <label htmlFor="resultCount">Result count</label>
+                <label htmlFor="resultCount" className="tooltip-label">
+                  Results
+                  <span className="tooltip-text">How many recipes to show.</span>
+                </label>
                 <select
                   id="resultCount"
                   value={resultCount}
@@ -684,7 +688,10 @@ function HomePage({ settings, userId }) {
               </div>
 
               <div>
-                <label htmlFor="minUsedFilter">Min used ingredients</label>
+                <label htmlFor="minUsedFilter" className="tooltip-label">
+                  Min used
+                  <span className="tooltip-text">Only show recipes using at least this many of your ingredients.</span>
+                </label>
                 <input
                   id="minUsedFilter"
                   type="number"
@@ -697,7 +704,10 @@ function HomePage({ settings, userId }) {
               </div>
 
               <div>
-                <label htmlFor="maxMissingFilter">Max missing ingredients</label>
+                <label htmlFor="maxMissingFilter" className="tooltip-label">
+                  Max missing
+                  <span className="tooltip-text">Hide recipes that need more missing ingredients than this.</span>
+                </label>
                 <input
                   id="maxMissingFilter"
                   type="number"
@@ -709,8 +719,11 @@ function HomePage({ settings, userId }) {
                 />
               </div>
 
-              <div>
-                <label htmlFor="ignorePantryToggle">Ignore pantry staples</label>
+              <div className="filter-toggle-block">
+                <label htmlFor="ignorePantryToggle" className="tooltip-label">
+                  Ignore pantry
+                  <span className="tooltip-text">Treat pantry staples like oil and salt as optional.</span>
+                </label>
                 <button
                   id="ignorePantryToggle"
                   type="button"
@@ -724,7 +737,7 @@ function HomePage({ settings, userId }) {
           </div>
 
           <div className="search-fields">
-            <label htmlFor="userInput">Ingredients (comma-separated)</label>
+            <label htmlFor="userInput">Ingredients</label>
             <input
               type="text"
               id="userInput"
@@ -736,7 +749,10 @@ function HomePage({ settings, userId }) {
               }}
             />
 
-            <label htmlFor="maxTimeInput">Max time (minutes)</label>
+            <label htmlFor="maxTimeInput" className="tooltip-label">
+              Max time
+              <span className="tooltip-text">Limit recipes by total cook time in minutes.</span>
+            </label>
             <input
               type="number"
               id="maxTimeInput"
@@ -758,7 +774,7 @@ function HomePage({ settings, userId }) {
           </div>
 
           <div id="nudge" className={`nudge ${showNudge ? "show" : "hidden"}`}>
-            Not sure where to start? Try one ingredient.
+            Try one ingredient.
           </div>
 
           <div className="search-actions">
@@ -771,10 +787,13 @@ function HomePage({ settings, userId }) {
               onClick={addToPantry}
               disabled={savingPantry}
             >
-              {savingPantry ? "Adding..." : "Add ingredients to pantry"}
+              {savingPantry ? "Adding..." : "Add to pantry"}
+            </button>
+            <button type="button" className="search-action-btn" onClick={clearIngredients} disabled={!inputValue.trim()}>
+              Clear
             </button>
           </div>
-          <p className="sync-line">Shortcut: press `/` to focus ingredients, `Cmd/Ctrl + Enter` to search.</p>
+          <p className="sync-line">`/` focus, `Cmd/Ctrl + Enter` search.</p>
         </section>
 
         {error ? <p className="error-text">{error}</p> : null}
@@ -786,7 +805,7 @@ function HomePage({ settings, userId }) {
         ) : null}
 
         <section className="results" aria-live="polite">
-          <h4>Recipe ideas</h4>
+          <h4>Recipes</h4>
           {loading ? (
             <ul className="recipe-list">
               {[0, 1, 2].map((skeleton) => (
@@ -799,7 +818,7 @@ function HomePage({ settings, userId }) {
             </ul>
           ) : null}
           {!loading && recipes.length === 0 && !error && !apiError ? (
-            <p id="output">Your suggestions will appear here.</p>
+            <p id="output">No results yet.</p>
           ) : null}
 
           <ul className="recipe-list">
@@ -815,8 +834,13 @@ function HomePage({ settings, userId }) {
                 <p>
                   Missing ingredients: {recipe.missedIngredients.length ? recipe.missedIngredients.join(", ") : "None"}
                 </p>
-                <button type="button" className="plan-btn" onClick={() => completeRecipePlan(recipe.id)}>
-                  {selectedRecipeId === recipe.id ? "Planned" : "I'll cook this"}
+                <button
+                  type="button"
+                  className="plan-btn"
+                  title={selectedRecipeId === recipe.id ? "Selected recipe" : "Mark this recipe as your plan"}
+                  onClick={() => completeRecipePlan(recipe.id)}
+                >
+                  {selectedRecipeId === recipe.id ? "Planned" : "Choose"}
                 </button>
               </li>
             ))}
@@ -824,23 +848,20 @@ function HomePage({ settings, userId }) {
 
           {selectedRecipeId ? (
             <section className="completion-panel gradient-card" aria-live="polite">
-              <h4>Plan locked in</h4>
-              <p>
-                Great call. You completed a high-pressure decision. This helps tonight and reduces tomorrow's stress
-                too.
-              </p>
+              <h4>Chosen</h4>
+              <p>You picked a recipe.</p>
               {rewardUnlockedToday ? (
-                <p className="reward-line">Scarce reward unlocked: Golden Ladle token for today.</p>
+                <p className="reward-line">Reward unlocked.</p>
               ) : (
-                <p className="reward-line">Today's scarce reward already claimed. Keep your streak tomorrow.</p>
+                <p className="reward-line">Reward already claimed today.</p>
               )}
 
               <div className="commitment-box">
-                <label htmlFor="commitmentName">Who are you making this for?</label>
+                <label htmlFor="commitmentName">Cooking for</label>
                 <input
                   id="commitmentName"
                   type="text"
-                  placeholder="friend, sibling, roommate..."
+                  placeholder="name"
                   value={commitmentName}
                   onChange={(event) => {
                     setCommitmentName(event.target.value);
@@ -848,15 +869,15 @@ function HomePage({ settings, userId }) {
                   }}
                 />
                 <button type="button" onClick={postCommitment}>
-                  Commit
+                  Save
                 </button>
                 {commitmentPosted ? (
-                  <p className="commitment-line">Commitment posted: You will cook for {commitmentName} tonight.</p>
+                  <p className="commitment-line">Saved for {commitmentName}.</p>
                 ) : null}
               </div>
 
               <div className="survey-box">
-                <p>How supported did you feel by this flow?</p>
+                <p>Was this useful?</p>
                 <div className="survey-actions">
                   {["Too busy", "Okay", "Very supported"].map((option) => (
                     <button key={option} type="button" onClick={() => setFeedback(option)}>
@@ -864,7 +885,7 @@ function HomePage({ settings, userId }) {
                     </button>
                   ))}
                 </div>
-                {feedback ? <p className="feedback-line">Thanks. Feedback saved: {feedback}</p> : null}
+                {feedback ? <p className="feedback-line">Saved: {feedback}</p> : null}
               </div>
             </section>
           ) : null}
