@@ -29,13 +29,6 @@ const defaultSettings = {
   allowProgressNudges: true
 };
 
-const SUPPORTIVE_LINES = [
-  "Find something fast.",
-  "Start with what you have.",
-  "Pick a recipe and go.",
-  "Search in seconds."
-];
-
 function generateUserId() {
   if (typeof crypto !== "undefined" && crypto.randomUUID) {
     return crypto.randomUUID();
@@ -272,17 +265,6 @@ function HomePage({ settings, userId, profile }) {
   const firstName = (profile?.name || "").trim().split(" ")[0];
   const welcomeText = firstName ? `${firstName}, cook from what you have` : "Cook from what you have";
   const characters = useMemo(() => welcomeText.split(""), [welcomeText]);
-  const supportiveMessage = useMemo(() => {
-    const hour = new Date().getHours();
-    const idx = hour % SUPPORTIVE_LINES.length;
-    return SUPPORTIVE_LINES[idx];
-  }, []);
-  const progressStepsDone = [
-    inputValue.trim().length > 0,
-    recipes.length > 0,
-    selectedRecipeId.length > 0
-  ].filter(Boolean).length;
-  const progressPercent = Math.round((progressStepsDone / 3) * 100);
   const onboardingProgress = Math.round(
     ((inputValue.trim() ? 1 : 0) + (recipes.length > 0 ? 1 : 0) + (pantryItems.length > 0 ? 1 : 0)) / 3 * 100
   );
@@ -635,17 +617,6 @@ function HomePage({ settings, userId, profile }) {
             </div>
           </section>
         ) : null}
-        <div className="pressure-banner">
-          <p>{supportiveMessage}</p>
-        </div>
-        <section className="fogg-panel gradient-card">
-          <h4>Your kitchen</h4>
-          <p>{pantryItems.length > 0 ? `${pantryItems.length} pantry items saved.` : "Start with a few ingredients."}</p>
-          <div className="progress-strip" aria-label="Task progress">
-            <div className="progress-fill" style={{ width: `${progressPercent}%` }} />
-          </div>
-          <p className="progress-copy">{progressStepsDone}/3 done</p>
-        </section>
         <section className="initial-search-panel gradient-card" aria-label="Search by ingredients">
           <h3 className="initial-search-title wave-title">
             {firstName ? `${firstName}, what's in your kitchen?` : "What's in your kitchen?"}

@@ -263,40 +263,6 @@ button:focus-visible {
   transform: translateY(0);
 }
 
-.pressure-banner {
-  margin: 0 auto 0.4rem 0;
-  max-width: 560px;
-  background: linear-gradient(135deg, rgba(255, 211, 184, 0.85), rgba(255, 237, 218, 0.9));
-  border: 1px solid rgba(214, 111, 75, 0.18);
-  border-radius: 14px;
-  padding: 0.75rem 1rem;
-  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.06);
-  animation: slideLeftIn 0.55s cubic-bezier(0.2, 0.8, 0.2, 1);
-}
-
-.pressure-banner p {
-  margin: 0;
-  font-weight: 600;
-  color: #5e2f1f;
-}
-
-.fogg-panel {
-  margin: 0 0 0.15rem auto;
-  text-align: left;
-  max-width: 620px;
-  border-radius: 14px;
-  padding: 0.9rem 1rem;
-  animation: slideRightIn 0.55s cubic-bezier(0.2, 0.8, 0.2, 1);
-}
-
-.fogg-panel h4 {
-  margin: 0 0 0.35rem;
-}
-
-.fogg-panel p {
-  margin: 0 0 0.5rem;
-}
-
 .initial-search-panel {
   margin: -0.35rem auto 0.6rem;
   max-width: 760px;
@@ -876,8 +842,6 @@ button:focus-visible {
     align-items: flex-start;
   }
 
-  .pressure-banner,
-  .fogg-panel,
   .initial-search-panel {
     margin-left: auto;
     margin-right: auto;
