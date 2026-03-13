@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from app.utils.config import settings
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi import Query
-from app.routes import recipes, pantry, user
+from app.routes import recipes, pantry, user, auth
 from app.models.ingredient import PantryAddRequest
 from app.services.supabase_service import add_user_pantry_ingredients, get_dietary_restrictions, get_user_pantry
 from app.services.spoonacular_service import search_recipes_by_ingredients
@@ -21,6 +21,7 @@ app.add_middleware(
 app.include_router(recipes.router)
 app.include_router(pantry.router)
 app.include_router(user.router)
+app.include_router(auth.router)
 
 
 @app.get("/")
