@@ -39,6 +39,33 @@ def get_dietary_restrictions():
     return response.data or []
 
 
+def sign_up(email: str, password: str, name: str | None = None):
+    response = supabase.auth.sign_up({
+        "email": email,
+        "password": password,
+        "options": {
+            "data": {"name": name or ""}
+        }
+    })
+    return response
+
+def sign_in(email: str, password: str):
+    response = supabase.auth.sign_in_with_password({
+        "email": email,
+        "password": password
+    })
+    return response
+
+def sign_out(jwt: str):
+    # Pass the user's token so Supabase invalidates their session
+    supabase.auth.sign_out()
+    return {"message": "Signed out"}
+
+
+
+
+
+
 def get_user_profile(user_id: str):
     # Profile data is split across the user table and the generic app-state blob, so we merge both sources here.
     profile: dict[str, Any] = {"userId": user_id, "name": "", "email": "", "dietary": {}, "notes": ""}

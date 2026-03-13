@@ -3,6 +3,7 @@
 *.env
 backend/.env
 frontend/.env
+.venv/
 
 # python virtual environment
 venv/
