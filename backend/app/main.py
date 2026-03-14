@@ -3,8 +3,7 @@ from app.utils.config import settings
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi import Query
 from app.routes import recipes, pantry, user, auth
-from app.models.ingredient import PantryAddRequest
-from app.services.supabase_service import add_user_pantry_ingredients, get_dietary_restrictions, get_user_pantry
+from app.services.supabase_service import get_dietary_restrictions
 from app.services.spoonacular_service import search_recipes_by_ingredients
 
 app = FastAPI()
@@ -56,17 +55,6 @@ def search_recipes_api(
         ignore_pantry=ignorePantry,
         max_ready_time=maxTime,
     )
-
-
-@app.get("/api/pantry")
-def get_pantry_api(userId: str = Query(..., min_length=3)):
-    return {"userId": userId, "ingredients": get_user_pantry(userId)}
-
-
-@app.post("/api/pantry/add")
-def add_pantry_api(payload: PantryAddRequest):
-    ingredients = add_user_pantry_ingredients(payload.user_id, [item.name for item in payload.ingredients])
-    return {"ok": True, "userId": payload.user_id, "ingredients": ingredients}
 
 if __name__ == "__main__":
     import uvicorn

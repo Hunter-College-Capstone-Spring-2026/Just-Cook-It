@@ -12,3 +12,8 @@ class PantryIngredient(BaseModel):
 class PantryAddRequest(BaseModel):
     user_id: str
     ingredients: list[PantryIngredient]
+
+
+class PantryRemoveRequest(BaseModel):
+    user_id: str
+    ingredient_name: str

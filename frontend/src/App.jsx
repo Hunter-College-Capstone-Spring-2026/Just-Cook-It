@@ -23,13 +23,6 @@ const defaultSettings = {
   allowProgressNudges: true,
 };
 
-const SUPPORTIVE_LINES = [
-  "You are doing a lot. Let's make this one thing easy.",
-  "No pressure. We can find something simple in under a minute.",
-  "You showed up. That's enough for today. We'll handle the recipe part.",
-  "Take one breath. Type what you have, and we will do the heavy lifting.",
-];
-
 function useLocalStorage(key, initialValue) {
   const [value, setValue] = useState(() => {
     try {
@@ -616,14 +609,6 @@ function SignUpPage({ onSuccess, onGoToSignIn }) {
 function HomePage({ settings, userId }) {
   const [inputValue, setInputValue] = useState("");
   const [maxTimeMinutes, setMaxTimeMinutes] = useState("");
-  const [sortPriority, setSortPriority] = useState("missing");
-  const [ignorePantry, setIgnorePantry] = useState(true);
-  const [resultCount, setResultCount] = useState(
-    settings.quickRecipes ? 5 : 10
-  );
-  const [minUsedFilter, setMinUsedFilter] = useState("");
-  const [maxMissingFilter, setMaxMissingFilter] = useState("");
-  const [showNudge, setShowNudge] = useState(false);
   const [visibleChars, setVisibleChars] = useState(0);
   const [showInteraction, setShowInteraction] = useState(false);
   const [error, setError] = useState("");
@@ -634,6 +619,8 @@ function HomePage({ settings, userId }) {
   const [pantryMessage, setPantryMessage] = useState("");
   const [pantryError, setPantryError] = useState("");
   const [savingPantry, setSavingPantry] = useState(false);
+  const [cookingRecipeId, setCookingRecipeId] = useState("");
+  const [removingPantryItem, setRemovingPantryItem] = useState("");
   const [online, setOnline] = useState(
     typeof navigator !== "undefined" ? navigator.onLine : true
   );
@@ -641,34 +628,13 @@ function HomePage({ settings, userId }) {
     "jci_queued_pantry_adds",
     []
   );
-  const [onboardingDismissed, setOnboardingDismissed] = useLocalStorage(
-    "jci_onboarding_dismissed",
-    false
-  );
   const [selectedRecipeId, setSelectedRecipeId] = useState("");
   const [celebrate, setCelebrate] = useState(false);
 
   const welcomeText = "Welcome!";
   const characters = useMemo(() => welcomeText.split(""), [welcomeText]);
-  const supportiveMessage = useMemo(() => {
-    const hour = new Date().getHours();
-    const idx = hour % SUPPORTIVE_LINES.length;
-    return SUPPORTIVE_LINES[idx];
-  }, []);
-
-  const progressStepsDone = [
-    inputValue.trim().length > 0,
-    recipes.length > 0,
-    selectedRecipeId.length > 0,
-  ].filter(Boolean).length;
-  const progressPercent = Math.round((progressStepsDone / 3) * 100);
-  const onboardingProgress = Math.round(
-    (((inputValue.trim() ? 1 : 0) +
-      (recipes.length > 0 ? 1 : 0) +
-      (pantryItems.length > 0 ? 1 : 0)) /
-      3) *
-      100
-  );
+  const resultCount = settings.quickRecipes ? 5 : 10;
+  const ignorePantry = true;
 
   useEffect(() => {
     const startDelay = 400;
@@ -692,20 +658,11 @@ function HomePage({ settings, userId }) {
   }, [characters.length]);
 
   useEffect(() => {
-    if (inputValue.trim()) {
-      setShowNudge(false);
-      return undefined;
-    }
-    const nudgeTimer = setTimeout(() => setShowNudge(true), 6000);
-    return () => clearTimeout(nudgeTimer);
-  }, [inputValue]);
-
-  useEffect(() => {
     let cancelled = false;
     const loadPantry = async () => {
       try {
         const response = await fetch(
-          `${API_BASE_URL}/pantry?userId=${encodeURIComponent(userId)}`
+          `${API_BASE_URL}/api/pantry?userId=${encodeURIComponent(userId)}`
         );
         if (!response.ok) return;
         const payload = await response.json();
@@ -761,7 +718,7 @@ function HomePage({ settings, userId }) {
       const remaining = [];
       for (const batch of queuedPantryAdds) {
         try {
-          const response = await fetch(`${API_BASE_URL}/pantry/add`, {
+          const response = await fetch(`${API_BASE_URL}/api/pantry/add`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(batch),
@@ -790,7 +747,7 @@ function HomePage({ settings, userId }) {
     const interval = setInterval(async () => {
       try {
         const response = await fetch(
-          `${API_BASE_URL}/pantry?userId=${encodeURIComponent(userId)}`
+          `${API_BASE_URL}/api/pantry?userId=${encodeURIComponent(userId)}`
         );
         if (!response.ok) return;
         const payload = await response.json();
@@ -802,10 +759,6 @@ function HomePage({ settings, userId }) {
     }, 20000);
     return () => clearInterval(interval);
   }, [online, userId]);
-
-  useEffect(() => {
-    setResultCount(settings.quickRecipes ? 5 : 10);
-  }, [settings.quickRecipes]);
 
   const parseIngredients = () =>
     inputValue
@@ -828,7 +781,7 @@ function HomePage({ settings, userId }) {
       const query = new URLSearchParams({
         ingredients,
         number: String(resultCount),
-        ranking: sortPriority === "used" ? "1" : "2",
+        ranking: "2",
         ignorePantry: String(ignorePantry),
       });
       if (maxTimeMinutes) query.set("maxTime", maxTimeMinutes);
@@ -852,28 +805,11 @@ function HomePage({ settings, userId }) {
         usedIngredientCount: recipe.usedIngredientCount,
         missedIngredientCount: recipe.missedIngredientCount,
         missedIngredients: recipe.missedIngredients || [],
+        usedIngredients: recipe.usedIngredients || [],
+        allIngredients: recipe.allIngredients || [],
       }));
 
-      const minUsedValue = minUsedFilter ? Number(minUsedFilter) : null;
-      const maxMissingValue = maxMissingFilter
-        ? Number(maxMissingFilter)
-        : null;
-      const filteredRecipes = mappedRecipes.filter((recipe) => {
-        if (minUsedValue !== null && recipe.usedIngredientCount < minUsedValue)
-          return false;
-        if (
-          maxMissingValue !== null &&
-          recipe.missedIngredientCount > maxMissingValue
-        )
-          return false;
-        return true;
-      });
-      const sortedRecipes = filteredRecipes.sort((a, b) => {
-        if (sortPriority === "used") {
-          if (b.usedIngredientCount !== a.usedIngredientCount)
-            return b.usedIngredientCount - a.usedIngredientCount;
-          return a.missedIngredientCount - b.missedIngredientCount;
-        }
+      const sortedRecipes = mappedRecipes.sort((a, b) => {
         if (a.missedIngredientCount !== b.missedIngredientCount)
           return a.missedIngredientCount - b.missedIngredientCount;
         return b.usedIngredientCount - a.usedIngredientCount;
@@ -895,12 +831,15 @@ function HomePage({ settings, userId }) {
     }
   };
 
-  const addToPantry = async () => {
-    const ingredientList = parseIngredients();
+  const saveIngredientsToPantry = async (
+    ingredientList,
+    successMessage,
+    offlineMessage = "Saved offline. Pantry will sync when connection returns."
+  ) => {
     if (ingredientList.length === 0) {
       setPantryError("Enter one or more ingredients, separated by commas.");
       setPantryMessage("");
-      return;
+      return false;
     }
     setSavingPantry(true);
     setPantryError("");
@@ -915,12 +854,10 @@ function HomePage({ settings, userId }) {
       };
       if (!online) {
         setQueuedPantryAdds((current) => [...current, requestBody]);
-        setPantryMessage(
-          "Saved offline. Pantry will sync when connection returns."
-        );
-        return;
+        setPantryMessage(offlineMessage);
+        return true;
       }
-      const response = await fetch(`${API_BASE_URL}/pantry/add`, {
+      const response = await fetch(`${API_BASE_URL}/api/pantry/add`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(requestBody),
@@ -931,21 +868,77 @@ function HomePage({ settings, userId }) {
       setPantryItems(
         Array.isArray(payload.ingredients) ? payload.ingredients : []
       );
-      setPantryMessage(
-        `Added ${ingredientList.length} ingredient${
-          ingredientList.length > 1 ? "s" : ""
-        } to pantry.`
-      );
+      setPantryMessage(successMessage);
+      return true;
     } catch (requestError) {
       setPantryItems(previousPantry);
       setPantryError(requestError?.message || "Could not add to pantry.");
+      return false;
     } finally {
       setSavingPantry(false);
     }
   };
 
+  const addToPantry = async () => {
+    const ingredientList = parseIngredients();
+    await saveIngredientsToPantry(
+      ingredientList,
+      `Added ${ingredientList.length} ingredient${
+        ingredientList.length > 1 ? "s" : ""
+      } to pantry.`
+    );
+  };
+
+  const removeFromPantry = async (ingredientName) => {
+    if (!online) {
+      setPantryError("Go online to remove pantry items.");
+      setPantryMessage("");
+      return;
+    }
+
+    setRemovingPantryItem(ingredientName);
+    setPantryError("");
+    setPantryMessage("");
+
+    const previousPantry = pantryItems;
+    setPantryItems((current) =>
+      current.filter((item) => item.toLowerCase() !== ingredientName.toLowerCase())
+    );
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/pantry/remove`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          user_id: userId,
+          ingredient_name: ingredientName,
+        }),
+      });
+      const payload = await response.json();
+      if (!response.ok)
+        throw new Error(payload?.detail || "Could not remove from pantry.");
+      setPantryItems(
+        Array.isArray(payload.ingredients) ? payload.ingredients : []
+      );
+      setPantryMessage(`Removed ${ingredientName} from pantry.`);
+    } catch (requestError) {
+      setPantryItems(previousPantry);
+      setPantryError(requestError?.message || "Could not remove from pantry.");
+    } finally {
+      setRemovingPantryItem("");
+    }
+  };
+
   const applyIngredientSuggestion = (value) => {
     setInputValue((current) => (current ? `${current}, ${value}` : value));
+  };
+
+  const clearIngredients = () => {
+    setInputValue("");
+    setError("");
+    setApiError("");
+    setPantryError("");
+    setPantryMessage("");
   };
 
   const quickSets = [
@@ -982,11 +975,25 @@ function HomePage({ settings, userId }) {
     }
   };
 
-  const completeRecipePlan = (recipeId) => {
-    setSelectedRecipeId(recipeId);
+  const completeRecipePlan = async (recipe) => {
+    const recipeIngredients = Array.from(
+      new Set((recipe.allIngredients || []).map((item) => item.trim()).filter(Boolean))
+    );
+    setCookingRecipeId(recipe.id);
+    const saved = await saveIngredientsToPantry(
+      recipeIngredients,
+      `Cooked ${recipe.title}. Added its ingredients to your pantry.`,
+      `Cooked ${recipe.title}. Its ingredients will sync to your pantry when you're back online.`
+    );
+    if (!saved) {
+      setCookingRecipeId("");
+      return;
+    }
+    setSelectedRecipeId(recipe.id);
     setCelebrate(true);
     playSuccessChime();
     setTimeout(() => setCelebrate(false), 1000);
+    setCookingRecipeId("");
   };
 
   return (
@@ -1008,54 +1015,14 @@ function HomePage({ settings, userId }) {
         className={showInteraction ? "show" : ""}
       >
         {celebrate ? <ConfettiBurst /> : null}
-        {!onboardingDismissed ? (
-          <section className="card gradient-card onboarding-card">
-            <div className="onboarding-top">
-              <h4>Start in under 60 seconds</h4>
-              <button
-                type="button"
-                className="chip-btn"
-                onClick={() => setOnboardingDismissed(true)}
-              >
-                Dismiss
-              </button>
-            </div>
-            <p>1) Add ingredients, 2) search, 3) save to pantry.</p>
-            <div className="progress-strip" aria-label="Onboarding progress">
-              <div
-                className="progress-fill"
-                style={{ width: `${onboardingProgress}%` }}
-              />
-            </div>
-          </section>
-        ) : null}
-        <div className="pressure-banner">
-          <p>{supportiveMessage}</p>
-        </div>
-        <section className="fogg-panel gradient-card">
-          <h4>Your next win</h4>
-          <p>
-            Motivation: protect your energy now, and your future time later.
-            Ability: use one ingredient if needed. Prompt: press{" "}
-            <strong>Cook it!</strong> now.
-          </p>
-          <div className="progress-strip" aria-label="Task progress">
-            <div
-              className="progress-fill"
-              style={{ width: `${progressPercent}%` }}
-            />
-          </div>
-          <p className="progress-copy">
-            Progress: {progressStepsDone}/3 actions complete
-          </p>
-        </section>
         <section
           className="initial-search-panel gradient-card"
           aria-label="Search by ingredients"
         >
-          <h3 className="initial-search-title wave-title">
-            What do you have in your kitchen?
-          </h3>
+          <h3 className="initial-search-title">Cook from what you have</h3>
+          <p className="search-subtitle">
+            Save ingredients to pantry and find a simple recipe match.
+          </p>
           {!online ? (
             <p className="sync-line">
               Offline mode: searches may fail, pantry adds will queue.
@@ -1067,103 +1034,28 @@ function HomePage({ settings, userId }) {
             </p>
           ) : null}
 
-          <div className="multi-filter-panel" aria-label="Search filters">
-            <p className="filter-title">Sort priority</p>
-            <div
-              className="priority-toggle-group"
-              role="group"
-              aria-label="Sort priority"
-            >
-              <button
-                type="button"
-                className={`priority-toggle ${
-                  sortPriority === "missing" ? "active" : ""
-                }`}
-                onClick={() => setSortPriority("missing")}
-              >
-                Fewer missing (default)
-              </button>
-              <button
-                type="button"
-                className={`priority-toggle ${
-                  sortPriority === "used" ? "active" : ""
-                }`}
-                onClick={() => setSortPriority("used")}
-              >
-                Most used
-              </button>
-            </div>
-
-            <div className="filter-grid">
-              <div>
-                <label htmlFor="resultCount">Result count</label>
-                <select
-                  id="resultCount"
-                  value={resultCount}
-                  onChange={(event) =>
-                    setResultCount(Number(event.target.value))
-                  }
-                >
-                  <option value={5}>5</option>
-                  <option value={10}>10</option>
-                  <option value={15}>15</option>
-                  <option value={20}>20</option>
-                </select>
-              </div>
-              <div>
-                <label htmlFor="minUsedFilter">Min used ingredients</label>
-                <input
-                  id="minUsedFilter"
-                  type="number"
-                  min="0"
-                  max="20"
-                  placeholder="Optional"
-                  value={minUsedFilter}
-                  onChange={(event) => setMinUsedFilter(event.target.value)}
-                />
-              </div>
-              <div>
-                <label htmlFor="maxMissingFilter">
-                  Max missing ingredients
-                </label>
-                <input
-                  id="maxMissingFilter"
-                  type="number"
-                  min="0"
-                  max="20"
-                  placeholder="Optional"
-                  value={maxMissingFilter}
-                  onChange={(event) => setMaxMissingFilter(event.target.value)}
-                />
-              </div>
-              <div>
-                <label htmlFor="ignorePantryToggle">
-                  Ignore common ingredient staples (e.g. salt, water)
-                </label>
-                <button
-                  id="ignorePantryToggle"
-                  type="button"
-                  className={`toggle-switch ${ignorePantry ? "on" : ""}`}
-                  onClick={() => setIgnorePantry((current) => !current)}
-                >
-                  {ignorePantry ? "On" : "Off"}
-                </button>
-              </div>
-            </div>
-          </div>
-
           <div className="search-fields">
             <label htmlFor="userInput">Ingredients (comma-separated)</label>
-            <input
-              type="text"
-              id="userInput"
-              placeholder="e.g. chicken, rice, spinach"
-              value={inputValue}
-              onChange={(event) => setInputValue(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter") searchRecipes();
-              }}
-            />
+            <div className="ingredient-input-row">
+              <input
+                type="text"
+                id="userInput"
+                placeholder="e.g. chicken, rice, spinach"
+                value={inputValue}
+                onChange={(event) => setInputValue(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") searchRecipes();
+                }}
+              />
+              <button
+                type="button"
+                className="clear-btn"
+                onClick={clearIngredients}
+                disabled={!inputValue.trim()}
+              >
+                Clear
+              </button>
+            </div>
             <label htmlFor="maxTimeInput">Max time (minutes)</label>
             <input
               type="number"
@@ -1193,10 +1085,6 @@ function HomePage({ settings, userId }) {
             ))}
           </div>
 
-          <div id="nudge" className={`nudge ${showNudge ? "show" : "hidden"}`}>
-            Not sure where to start? Try one ingredient.
-          </div>
-
           <div className="search-actions">
             <button
               className="search-action-btn"
@@ -1216,19 +1104,46 @@ function HomePage({ settings, userId }) {
               {savingPantry ? "Adding..." : "Add ingredients to pantry"}
             </button>
           </div>
-          <p className="sync-line">
-            Shortcut: press `/` to focus ingredients, `Cmd/Ctrl + Enter` to
-            search.
-          </p>
         </section>
 
         {error ? <p className="error-text">{error}</p> : null}
         {apiError ? <p className="error-text">{apiError}</p> : null}
         {pantryError ? <p className="error-text">{pantryError}</p> : null}
         {pantryMessage ? <p className="sync-line">{pantryMessage}</p> : null}
-        {pantryItems.length > 0 ? (
-          <p className="sync-line">Pantry: {pantryItems.join(", ")}</p>
-        ) : null}
+        <section className="card gradient-card pantry-panel" aria-label="Pantry">
+          <div className="pantry-panel-top">
+            <div>
+              <h4 className="section-title">Your pantry</h4>
+              <p className="sync-line pantry-summary">
+                {pantryItems.length > 0
+                  ? "Saved ingredients for future recipe suggestions. No quantities, just a simple list."
+                  : "No pantry items yet. Add ingredients above to save them here."}
+              </p>
+            </div>
+          </div>
+          {!online && pantryItems.length > 0 ? (
+            <p className="sync-line pantry-offline-note">
+              Go online to remove pantry items. Offline adds will still queue.
+            </p>
+          ) : null}
+          {pantryItems.length > 0 ? (
+            <ul className="pantry-list">
+              {pantryItems.map((item) => (
+                <li key={item} className="pantry-chip">
+                  <span>{item}</span>
+                  <button
+                    type="button"
+                    className="pantry-remove-btn"
+                    onClick={() => removeFromPantry(item)}
+                    disabled={!online || removingPantryItem === item}
+                  >
+                    {removingPantryItem === item ? "Removing..." : "Remove"}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ) : null}
+        </section>
 
         <section className="results" aria-live="polite">
           <h4>Recipe ideas</h4>
@@ -1273,11 +1188,14 @@ function HomePage({ settings, userId }) {
                 <button
                   type="button"
                   className="plan-btn"
-                  onClick={() => completeRecipePlan(recipe.id)}
+                  onClick={() => completeRecipePlan(recipe)}
+                  disabled={cookingRecipeId === recipe.id}
                 >
-                  {selectedRecipeId === recipe.id
-                    ? "Planned ✓"
-                    : "I'll cook this"}
+                  {cookingRecipeId === recipe.id
+                    ? "Saving to pantry..."
+                    : selectedRecipeId === recipe.id
+                      ? "Cooked ✓"
+                      : "Mark as cooked"}
                 </button>
               </li>
             ))}
@@ -1288,10 +1206,10 @@ function HomePage({ settings, userId }) {
               className="completion-panel gradient-card"
               aria-live="polite"
             >
-              <h4>Plan locked in</h4>
+              <h4>Saved for next time</h4>
               <p>
-                Great call. You completed a high-pressure decision. This helps
-                tonight and reduces tomorrow's stress too.
+                This recipe's ingredients were added to your pantry so future
+                recipe suggestions can build on what you already have.
               </p>
             </section>
           ) : null}

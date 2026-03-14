@@ -111,6 +111,19 @@ def search_recipes_by_ingredients(
                     for ing in item.get("missedIngredients", [])
                     if ing.get("name")
                 ],
+                "usedIngredients": [
+                    ing.get("name")
+                    for ing in item.get("usedIngredients", [])
+                    if ing.get("name")
+                ],
+                "allIngredients": [
+                    ing.get("name")
+                    for ing in (
+                        (item.get("usedIngredients", []) or [])
+                        + (item.get("missedIngredients", []) or [])
+                    )
+                    if ing.get("name")
+                ],
             }
             for item in raw_results
         ]

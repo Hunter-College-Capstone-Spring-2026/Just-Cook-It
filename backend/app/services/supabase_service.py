@@ -243,3 +243,37 @@ def add_user_pantry_ingredients(user_id: str, ingredients: list[str]):
             continue
 
     return get_user_pantry(user_id)
+
+
+def remove_user_pantry_ingredient(user_id: str, ingredient_name: str):
+    normalized = ingredient_name.strip()
+    if not normalized:
+        return get_user_pantry(user_id)
+
+    try:
+        rows = (
+            supabase.table(settings.supabase_user_ingredient_table)
+            .select("ingredient_name")
+            .eq("user_id", user_id)
+            .execute()
+            .data
+            or []
+        )
+        matching_names = [
+            row_name
+            for row in rows
+            if (row_name := row.get("ingredient_name"))
+            and row_name.strip().lower() == normalized.lower()
+        ]
+        for row_name in matching_names:
+            (
+                supabase.table(settings.supabase_user_ingredient_table)
+                .delete()
+                .eq("user_id", user_id)
+                .eq("ingredient_name", row_name)
+                .execute()
+            )
+    except Exception:
+        pass
+
+    return get_user_pantry(user_id)
