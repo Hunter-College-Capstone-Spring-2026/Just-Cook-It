@@ -618,7 +618,6 @@ function HomePage({ settings, userId }) {
   const [pantryItems, setPantryItems] = useState([]);
   const [pantryMessage, setPantryMessage] = useState("");
   const [pantryError, setPantryError] = useState("");
-  const [savingPantry, setSavingPantry] = useState(false);
   const [cookingRecipeId, setCookingRecipeId] = useState("");
   const [removingPantryItem, setRemovingPantryItem] = useState("");
   const [online, setOnline] = useState(
@@ -841,7 +840,6 @@ function HomePage({ settings, userId }) {
       setPantryMessage("");
       return false;
     }
-    setSavingPantry(true);
     setPantryError("");
     setPantryMessage("");
     const previousPantry = pantryItems;
@@ -874,19 +872,7 @@ function HomePage({ settings, userId }) {
       setPantryItems(previousPantry);
       setPantryError(requestError?.message || "Could not add to pantry.");
       return false;
-    } finally {
-      setSavingPantry(false);
     }
-  };
-
-  const addToPantry = async () => {
-    const ingredientList = parseIngredients();
-    await saveIngredientsToPantry(
-      ingredientList,
-      `Added ${ingredientList.length} ingredient${
-        ingredientList.length > 1 ? "s" : ""
-      } to pantry.`
-    );
   };
 
   const removeFromPantry = async (ingredientName) => {
@@ -1094,14 +1080,6 @@ function HomePage({ settings, userId }) {
               disabled={loading}
             >
               {loading ? "Finding recipes..." : "Cook it!"}
-            </button>
-            <button
-              type="button"
-              className="search-action-btn"
-              onClick={addToPantry}
-              disabled={savingPantry}
-            >
-              {savingPantry ? "Adding..." : "Add ingredients to pantry"}
             </button>
           </div>
         </section>
