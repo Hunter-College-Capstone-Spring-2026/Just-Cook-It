@@ -51,6 +51,26 @@ function mergeProfile(base, incoming) {
   };
 }
 
+function mergeIngredientLists(base, incoming) {
+  const seen = new Set();
+  return [...base, ...incoming].filter((item) => {
+    const cleaned = item?.trim();
+    if (!cleaned) return false;
+    const key = cleaned.toLowerCase();
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function formatRequestError(error, fallbackMessage) {
+  const message = error?.message || "";
+  if (message === "Load failed" || message === "Failed to fetch") {
+    return "Could not connect to backend API. Start backend on http://localhost:4000.";
+  }
+  return message || fallbackMessage;
+}
+
 // ─── Auth Context ────────────────────────────────────────────────────────────
 
 function App() {
@@ -307,8 +327,10 @@ function App() {
           )}
           {activePage === "profile" && (
             <ProfilePage
+              userId={userId}
               profile={profile}
               setProfile={setProfile}
+              settings={settings}
               onSave={saveProfile}
               syncMessage={profileSyncMessage}
               saving={savingProfile}
@@ -376,7 +398,12 @@ function SignInPage({ onSuccess, onGoToSignUp }) {
         refreshToken: payload.refreshToken,
       });
     } catch (err) {
-      setError(err.message || "Could not sign in. Check your credentials.");
+      setError(
+        formatRequestError(
+          err,
+          "Could not sign in. Check your credentials."
+        )
+      );
     } finally {
       setLoading(false);
     }
@@ -503,7 +530,7 @@ function SignUpPage({ onSuccess, onGoToSignIn }) {
         );
       }
     } catch (err) {
-      setError(err.message || "Could not create account.");
+      setError(formatRequestError(err, "Could not create account."));
     } finally {
       setLoading(false);
     }
@@ -615,10 +642,13 @@ function HomePage({ settings, userId }) {
   const [loading, setLoading] = useState(false);
   const [apiError, setApiError] = useState("");
   const [recipes, setRecipes] = useState([]);
-  const [pantryItems, setPantryItems] = useState([]);
+  // Pantry state is synced with backend when possible, but stored in localStorage to persist across sessions and support offline usage
+  const [pantryItems, setPantryItems] = useLocalStorage(
+    `jci_pantry_${userId || "guest"}`,
+    []
+  );
   const [pantryMessage, setPantryMessage] = useState("");
   const [pantryError, setPantryError] = useState("");
-  const [savingPantry, setSavingPantry] = useState(false);
   const [cookingRecipeId, setCookingRecipeId] = useState("");
   const [removingPantryItem, setRemovingPantryItem] = useState("");
   const [online, setOnline] = useState(
@@ -666,10 +696,11 @@ function HomePage({ settings, userId }) {
         );
         if (!response.ok) return;
         const payload = await response.json();
-        if (!cancelled)
-          setPantryItems(
-            Array.isArray(payload.ingredients) ? payload.ingredients : []
+        if (!cancelled && Array.isArray(payload.ingredients)) {
+          setPantryItems((current) =>
+            mergeIngredientLists(current, payload.ingredients)
           );
+        }
       } catch {
         /* ignore */
       }
@@ -728,7 +759,9 @@ function HomePage({ settings, userId }) {
           } else {
             const payload = await response.json();
             if (!cancelled && Array.isArray(payload.ingredients))
-              setPantryItems(payload.ingredients);
+              setPantryItems((current) =>
+                mergeIngredientLists(current, payload.ingredients)
+              );
           }
         } catch {
           remaining.push(batch);
@@ -752,7 +785,9 @@ function HomePage({ settings, userId }) {
         if (!response.ok) return;
         const payload = await response.json();
         if (Array.isArray(payload.ingredients))
-          setPantryItems(payload.ingredients);
+          setPantryItems((current) =>
+            mergeIngredientLists(current, payload.ingredients)
+          );
       } catch {
         /* ignore */
       }
@@ -841,11 +876,10 @@ function HomePage({ settings, userId }) {
       setPantryMessage("");
       return false;
     }
-    setSavingPantry(true);
     setPantryError("");
     setPantryMessage("");
     const previousPantry = pantryItems;
-    const optimistic = Array.from(new Set([...pantryItems, ...ingredientList]));
+    const optimistic = mergeIngredientLists(pantryItems, ingredientList);
     setPantryItems(optimistic);
     try {
       const requestBody = {
@@ -865,28 +899,18 @@ function HomePage({ settings, userId }) {
       const payload = await response.json();
       if (!response.ok)
         throw new Error(payload?.detail || "Could not add to pantry.");
-      setPantryItems(
-        Array.isArray(payload.ingredients) ? payload.ingredients : []
-      );
+      if (Array.isArray(payload.ingredients) && payload.ingredients.length > 0) {
+        setPantryItems((current) =>
+          mergeIngredientLists(current, payload.ingredients)
+        );
+      }
       setPantryMessage(successMessage);
       return true;
     } catch (requestError) {
       setPantryItems(previousPantry);
       setPantryError(requestError?.message || "Could not add to pantry.");
       return false;
-    } finally {
-      setSavingPantry(false);
     }
-  };
-
-  const addToPantry = async () => {
-    const ingredientList = parseIngredients();
-    await saveIngredientsToPantry(
-      ingredientList,
-      `Added ${ingredientList.length} ingredient${
-        ingredientList.length > 1 ? "s" : ""
-      } to pantry.`
-    );
   };
 
   const removeFromPantry = async (ingredientName) => {
@@ -1021,7 +1045,7 @@ function HomePage({ settings, userId }) {
         >
           <h3 className="initial-search-title">Cook from what you have</h3>
           <p className="search-subtitle">
-            Save ingredients to pantry and find a simple recipe match.
+            Find a recipe match, then save its ingredients to pantry when you cook it.
           </p>
           {!online ? (
             <p className="sync-line">
@@ -1094,14 +1118,6 @@ function HomePage({ settings, userId }) {
               disabled={loading}
             >
               {loading ? "Finding recipes..." : "Cook it!"}
-            </button>
-            <button
-              type="button"
-              className="search-action-btn"
-              onClick={addToPantry}
-              disabled={savingPantry}
-            >
-              {savingPantry ? "Adding..." : "Add ingredients to pantry"}
             </button>
           </div>
         </section>
@@ -1221,8 +1237,20 @@ function HomePage({ settings, userId }) {
 
 // ─── Profile Page ─────────────────────────────────────────────────────────────
 
-function ProfilePage({ profile, setProfile, onSave, syncMessage, saving }) {
+function ProfilePage({
+  userId,
+  profile,
+  setProfile,
+  settings,
+  onSave,
+  syncMessage,
+  saving,
+}) {
   const [restrictions, setRestrictions] = useState([]);
+  const [pantryItems, setPantryItems] = useState([]);
+  const [recipeIdeas, setRecipeIdeas] = useState([]);
+  const [ideasLoading, setIdeasLoading] = useState(false);
+  const [ideasError, setIdeasError] = useState("");
 
   useEffect(() => {
     fetch(`${API_BASE_URL}/api/dietary-restrictions`)
@@ -1230,6 +1258,78 @@ function ProfilePage({ profile, setProfile, onSave, syncMessage, saving }) {
       .then((data) => setRestrictions(Array.isArray(data) ? data : []))
       .catch(() => setRestrictions([]));
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadPantry = async () => {
+      try {
+        const response = await fetch(
+          `${API_BASE_URL}/api/pantry?userId=${encodeURIComponent(userId)}`
+        );
+        if (!response.ok) return;
+        const payload = await response.json();
+        if (!cancelled) {
+          setPantryItems(
+            Array.isArray(payload.ingredients) ? payload.ingredients : []
+          );
+        }
+      } catch {
+        if (!cancelled) setPantryItems([]);
+      }
+    };
+    if (userId) loadPantry();
+    return () => {
+      cancelled = true;
+    };
+  }, [userId]);
+
+  useEffect(() => {
+    if (pantryItems.length === 0) {
+      setRecipeIdeas([]);
+      setIdeasError("");
+      return;
+    }
+    let cancelled = false;
+    const loadIdeas = async () => {
+      setIdeasLoading(true);
+      setIdeasError("");
+      try {
+        const query = new URLSearchParams({
+          ingredients: pantryItems.join(","),
+          number: String(settings.quickRecipes ? 3 : 5),
+          ranking: "2",
+          ignorePantry: "true",
+        });
+        const response = await fetch(
+          `${API_BASE_URL}/api/spoonacular/recipes/search?${query.toString()}`
+        );
+        const payload = await response.json();
+        if (!response.ok) {
+          throw new Error(
+            payload?.error?.message ||
+              payload?.detail ||
+              "Could not load recipe ideas."
+          );
+        }
+        if (!cancelled) {
+          setRecipeIdeas(payload.results || []);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setRecipeIdeas([]);
+          setIdeasError(
+            formatRequestError(error, "Could not load recipe ideas.")
+          );
+        }
+      } finally {
+        if (!cancelled) setIdeasLoading(false);
+      }
+    };
+    loadIdeas();
+    return () => {
+      cancelled = true;
+    };
+  }, [pantryItems, settings.quickRecipes]);
 
   const updateDietary = (name) => {
     setProfile((current) => ({
@@ -1295,6 +1395,58 @@ function ProfilePage({ profile, setProfile, onSave, syncMessage, saving }) {
             setProfile((current) => ({ ...current, notes: event.target.value }))
           }
         />
+      </section>
+
+      <section className="card gradient-card profile-card">
+        <h3>Your Pantry</h3>
+        <p className="sync-line">
+          {pantryItems.length > 0
+            ? "These saved ingredients shape your future recipe suggestions."
+            : "Cook a recipe on Home to start building your pantry automatically."}
+        </p>
+        {pantryItems.length > 0 ? (
+          <ul className="pantry-list">
+            {pantryItems.map((item) => (
+              <li key={item} className="pantry-chip">
+                <span>{item}</span>
+              </li>
+            ))}
+          </ul>
+        ) : null}
+      </section>
+
+      <section className="card gradient-card profile-card">
+        <h3>What To Cook Next</h3>
+        {ideasLoading ? (
+          <p className="sync-line">Finding recipes from your pantry...</p>
+        ) : null}
+        {ideasError ? <p className="error-text">{ideasError}</p> : null}
+        {!ideasLoading && !ideasError && pantryItems.length === 0 ? (
+          <p className="sync-line">
+            Your next recipe suggestions will appear here after you cook and
+            save ingredients to pantry.
+          </p>
+        ) : null}
+        {!ideasLoading && !ideasError && pantryItems.length > 0 ? (
+          <ul className="recipe-list">
+            {recipeIdeas.length > 0 ? (
+              recipeIdeas.map((recipe) => (
+                <li key={recipe.recipeId} className="recipe-card gradient-card">
+                  <p className="recipe-title">{recipe.recipeName}</p>
+                  <p className="recipe-meta">
+                    ⏱ {recipe.readyInMinutes ?? "?"} min • Uses{" "}
+                    {recipe.usedIngredientCount ?? 0} • Missing{" "}
+                    {recipe.missedIngredientCount ?? 0}
+                  </p>
+                </li>
+              ))
+            ) : (
+              <p className="sync-line">
+                No recipe ideas yet. Try cooking one recipe on Home first.
+              </p>
+            )}
+          </ul>
+        ) : null}
       </section>
 
       <button
