@@ -526,7 +526,7 @@ function SignUpPage({ onSuccess, onGoToSignIn }) {
       } else {
         // Email confirmation required
         setSuccessMsg(
-          "Account created! Check your email to confirm your account, then sign in."
+          "Account created! Please sign in."
         );
       }
     } catch (err) {
@@ -544,7 +544,7 @@ function SignUpPage({ onSuccess, onGoToSignIn }) {
       </p>
 
       <section className="card gradient-card">
-        <label htmlFor="signup-name">Name (optional)</label>
+        <label htmlFor="signup-name">Name</label>
         <input
           id="signup-name"
           type="text"
