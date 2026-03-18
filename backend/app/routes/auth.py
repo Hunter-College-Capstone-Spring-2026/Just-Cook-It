@@ -13,12 +13,15 @@ def signup(payload: SignUpRequest):
     try:
         response = sign_up(payload.email, payload.password, payload.name)
         user = response.user
+        session = response.session
         if not user:
             raise HTTPException(status_code=400, detail="Signup failed")
         return {
             "ok": True,
             "userId": str(user.id),
             "email": user.email,
+            "accessToken": session.access_token if session else None,
+            "refreshToken": session.refresh_token if session else None,
         }
     except Exception as exc:
         raise HTTPException(status_code=400, detail=str(exc))

@@ -516,19 +516,12 @@ function SignUpPage({ onSuccess, onGoToSignIn }) {
         throw new Error(payload?.detail || "Sign up failed.");
       }
       // Supabase may require email confirmation — handle both flows
-      if (payload.accessToken) {
-        onSuccess({
-          userId: payload.userId,
-          email: payload.email,
-          accessToken: payload.accessToken,
-          refreshToken: payload.refreshToken,
-        });
-      } else {
-        // Email confirmation required
-        setSuccessMsg(
-          "Account created! Please sign in."
-        );
-      }
+      onSuccess({
+        userId: payload.userId,
+        email: payload.email,
+        accessToken: payload.accessToken,
+        refreshToken: payload.refreshToken,
+      });
     } catch (err) {
       setError(formatRequestError(err, "Could not create account."));
     } finally {
