@@ -88,3 +88,29 @@ def search_recipes_by_ingredients(
             for item in raw_results
         ]
     }
+
+def get_recipe_details_by_id(recipe_id: int):
+    url = f"{settings.spoonacular_base_url}/recipes/{recipe_id}/information"
+
+    params = {
+        "apiKey": settings.spoonacular_api_key
+    }
+
+    try:
+        response = requests.get(url, params=params, timeout=15)
+        response.raise_for_status()
+        data = response.json()
+    except requests.RequestException as exc:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Spoonacular request failed: {exc}"
+        )
+
+    return {
+        "id": data.get("id"),
+        "title": data.get("title"),
+        "image": data.get("image"),
+        "readyInMinutes": data.get("readyInMinutes"),
+        "extendedIngredients": data.get("extendedIngredients", []),
+        "instructions": data.get("instructions")
+    }

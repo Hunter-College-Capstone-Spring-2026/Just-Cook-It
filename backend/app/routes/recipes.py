@@ -1,6 +1,12 @@
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Query, HTTPException
+import requests
+from app.utils.config import settings
 
-from app.services.spoonacular_service import search_recipes, search_recipes_by_ingredients
+from app.services.spoonacular_service import (
+    search_recipes,
+    search_recipes_by_ingredients,
+    get_recipe_details_by_id
+)
 
 router = APIRouter(
     prefix="/recipes",
@@ -31,3 +37,7 @@ def search_by_ingredients(
         ignore_pantry=ignorePantry,
         max_ready_time=maxTime
     )
+
+@router.get("/api/spoonacular/recipes/{recipe_id}")
+def get_recipe_details(recipe_id: int):
+    return get_recipe_details_by_id(recipe_id)
