@@ -861,3 +861,130 @@ button:focus-visible {
     grid-template-columns: 1fr;
   }
 }
+
+.recipe-card-top,
+.recipe-details-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.75rem;
+  margin-bottom: 0.55rem;
+}
+.save-icon-btn {
+  width: auto;
+  min-width: 2.3rem;
+  height: 2.3rem;
+  margin: 0;
+  padding: 0.35rem 0.6rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.9);
+  color: #9a9a9a;
+  border: 1px solid rgba(74, 44, 29, 0.16);
+  box-shadow: 0 6px 14px rgba(74, 44, 29, 0.06);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.15rem;
+  line-height: 1;
+  transition: transform 0.2s ease, box-shadow 0.2s ease,
+    background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+}
+
+.save-icon-btn:hover {
+  transform: translateY(-1px);
+  background: #fff4ef;
+  border-color: rgba(214, 111, 75, 0.3);
+}
+
+.save-icon-btn.saved {
+  background: rgba(255, 235, 238, 0.96);
+  color: #d93025;
+  border-color: rgba(217, 48, 37, 0.22);
+  box-shadow: 0 10px 18px rgba(217, 48, 37, 0.12);
+}
+
+.recipe-card-top .save-icon-btn {
+  margin-left: auto;
+}
+
+.recipe-details-top .nav-btn {
+  width: auto;
+  margin: 0;
+  padding: 0.45rem 0.95rem;
+}
+
+.recipe-details-top .save-icon-btn {
+  flex-shrink: 0;
+}
+
+.recipe-details-image {
+  width: 100%;
+  max-width: 460px;
+  display: block;
+  margin: 0.9rem auto 1.2rem;
+  border-radius: 18px;
+  border: 1px solid rgba(214, 111, 75, 0.18);
+  box-shadow: 0 14px 28px rgba(74, 44, 29, 0.12);
+}
+
+.recipe-detail-list {
+  margin: 0.75rem 0 1.3rem;
+  padding-left: 1.2rem;
+  display: grid;
+  gap: 0.45rem;
+}
+
+.recipe-detail-list li {
+  color: var(--text-primary);
+  line-height: 1.5;
+}
+
+.recipe-instructions {
+  margin-top: 0.5rem;
+  color: var(--text-primary);
+  line-height: 1.7;
+  text-align: left;
+}
+
+.recipe-instructions p {
+  margin: 0 0 0.9rem;
+}
+
+.recipe-instructions ol,
+.recipe-instructions ul {
+  margin: 0.7rem 0 1rem;
+  padding-left: 1.2rem;
+}
+
+.recipe-instructions li {
+  margin-bottom: 0.45rem;
+}
+
+.recipe-meta {
+  margin: 0 0 0.45rem;
+  color: var(--text-secondary);
+  font-size: 0.95rem;
+}
+
+.recipe-card .plan-btn {
+  margin-top: 0.5rem;
+}
+
+.recipe-card .recipe-title {
+  margin-top: 0;
+}
+
+.recipe-card {
+  position: relative;
+}
+
+@media (max-width: 760px) {
+  .recipe-card-top,
+  .recipe-details-top {
+    align-items: center;
+  }
+
+  .recipe-details-image {
+    max-width: 100%;
+  }
+}
