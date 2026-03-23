@@ -71,18 +71,18 @@ function formatRequestError(error, fallbackMessage) {
   return message || fallbackMessage;
 }
 
-// ─── Auth Context ────────────────────────────────────────────────────────────
-
 function App() {
-  // Auth state
   const [authUser, setAuthUser] = useLocalStorage("jci_auth_user", null);
-  // authUser shape: { userId, email, accessToken, refreshToken }
-
   const [activePage, setActivePage] = useState("home");
   const [profile, setProfile] = useLocalStorage("jci_profile", defaultProfile);
   const [settings, setSettings] = useLocalStorage(
     "jci_settings",
     defaultSettings
+  );
+  const [selectedRecipe, setSelectedRecipe] = useState(null);
+  const [savedRecipeIds, setSavedRecipeIds] = useLocalStorage(
+    "jci_saved_recipes",
+    []
   );
 
   const userId = authUser?.userId || null;
@@ -98,7 +98,6 @@ function App() {
 
   const isLoggedIn = !!authUser;
 
-  // Nav items only available when logged in
   const navItems = isLoggedIn
     ? [
         { id: "home", label: "Home" },
@@ -107,7 +106,6 @@ function App() {
       ]
     : [];
 
-  // Redirect to login page if not authenticated
   useEffect(() => {
     if (!isLoggedIn && activePage !== "signup") {
       setActivePage("signin");
@@ -229,9 +227,9 @@ function App() {
     setAuthUser(null);
     setProfile(defaultProfile);
     setActivePage("signin");
+    setSelectedRecipe(null);
   };
 
-  // Show auth pages when not logged in
   if (!isLoggedIn) {
     return (
       <>
@@ -265,6 +263,7 @@ function App() {
             </ul>
           </nav>
         </header>
+
         <main>
           <section key={activePage} className="page-shell" aria-live="polite">
             {activePage === "signin" && (
@@ -305,7 +304,12 @@ function App() {
                   className={`nav-btn ${
                     activePage === item.id ? "active" : ""
                   }`}
-                  onClick={() => setActivePage(item.id)}
+                  onClick={() => {
+                    setActivePage(item.id);
+                    if (item.id !== "home") {
+                      setSelectedRecipe(null);
+                    }
+                  }}
                 >
                   {item.label}
                 </button>
@@ -321,10 +325,31 @@ function App() {
       </header>
 
       <main>
-        <section key={activePage} className="page-shell" aria-live="polite">
+        <section className="page-shell" aria-live="polite">
           {activePage === "home" && (
-            <HomePage settings={settings} userId={userId} />
+            <>
+              <div style={{ display: selectedRecipe ? "none" : "block" }}>
+                <HomePage
+                  settings={settings}
+                  userId={userId}
+                  onOpenRecipe={(recipe) => setSelectedRecipe(recipe)}
+                  savedRecipeIds={savedRecipeIds}
+                  setSavedRecipeIds={setSavedRecipeIds}
+                />
+              </div>
+
+              {selectedRecipe ? (
+                <RecipeDetailsPage
+                  recipe={selectedRecipe}
+                  userId={userId}
+                  onBack={() => setSelectedRecipe(null)}
+                  savedRecipeIds={savedRecipeIds}
+                  setSavedRecipeIds={setSavedRecipeIds}
+                />
+              ) : null}
+            </>
           )}
+
           {activePage === "profile" && (
             <ProfilePage
               userId={userId}
@@ -336,6 +361,7 @@ function App() {
               saving={savingProfile}
             />
           )}
+
           {activePage === "settings" && (
             <SettingsPage
               settings={settings}
@@ -356,7 +382,12 @@ function App() {
             className={`quick-nav-btn ${
               activePage === item.id ? "active" : ""
             }`}
-            onClick={() => setActivePage(item.id)}
+            onClick={() => {
+              setActivePage(item.id);
+              if (item.id !== "home") {
+                setSelectedRecipe(null);
+              }
+            }}
           >
             {item.label}
           </button>
@@ -365,8 +396,6 @@ function App() {
     </>
   );
 }
-
-// ─── Sign In Page ─────────────────────────────────────────────────────────────
 
 function SignInPage({ onSuccess, onGoToSignUp }) {
   const [email, setEmail] = useState("");
@@ -437,7 +466,7 @@ function SignInPage({ onSuccess, onGoToSignUp }) {
           autoComplete="current-password"
         />
 
-        {error && <p className="error-text">{error}</p>}
+        {error ? <p className="error-text">{error}</p> : null}
 
         <button
           type="button"
@@ -478,8 +507,6 @@ function SignInPage({ onSuccess, onGoToSignUp }) {
   );
 }
 
-// ─── Sign Up Page ─────────────────────────────────────────────────────────────
-
 function SignUpPage({ onSuccess, onGoToSignIn }) {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -487,7 +514,6 @@ function SignUpPage({ onSuccess, onGoToSignIn }) {
   const [confirm, setConfirm] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [successMsg, setSuccessMsg] = useState("");
 
   const handleSignUp = async () => {
     if (!email || !password) {
@@ -504,7 +530,7 @@ function SignUpPage({ onSuccess, onGoToSignIn }) {
     }
     setLoading(true);
     setError("");
-    setSuccessMsg("");
+
     try {
       const response = await fetch(`${API_BASE_URL}/api/auth/signup`, {
         method: "POST",
@@ -515,7 +541,6 @@ function SignUpPage({ onSuccess, onGoToSignIn }) {
       if (!response.ok) {
         throw new Error(payload?.detail || "Sign up failed.");
       }
-      // Supabase may require email confirmation — handle both flows
       onSuccess({
         userId: payload.userId,
         email: payload.email,
@@ -578,12 +603,7 @@ function SignUpPage({ onSuccess, onGoToSignIn }) {
           autoComplete="new-password"
         />
 
-        {error && <p className="error-text">{error}</p>}
-        {successMsg && (
-          <p className="sync-line" style={{ color: "green" }}>
-            {successMsg}
-          </p>
-        )}
+        {error ? <p className="error-text">{error}</p> : null}
 
         <button
           type="button"
@@ -624,25 +644,30 @@ function SignUpPage({ onSuccess, onGoToSignIn }) {
   );
 }
 
-// ─── Home Page ────────────────────────────────────────────────────────────────
-
-function HomePage({ settings, userId }) {
+function HomePage({
+  settings,
+  userId,
+  onOpenRecipe,
+  savedRecipeIds,
+  setSavedRecipeIds,
+}) {
   const [inputValue, setInputValue] = useState("");
+  const [queryText, setQueryText] = useState("");
+  const [usePantryForSearch, setUsePantryForSearch] = useState(false);
   const [maxTimeMinutes, setMaxTimeMinutes] = useState("");
+  const [rankingMode, setRankingMode] = useState("missing");
   const [visibleChars, setVisibleChars] = useState(0);
   const [showInteraction, setShowInteraction] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [apiError, setApiError] = useState("");
   const [recipes, setRecipes] = useState([]);
-  // Pantry state is synced with backend when possible, but stored in localStorage to persist across sessions and support offline usage
   const [pantryItems, setPantryItems] = useLocalStorage(
     `jci_pantry_${userId || "guest"}`,
     []
   );
   const [pantryMessage, setPantryMessage] = useState("");
   const [pantryError, setPantryError] = useState("");
-  const [cookingRecipeId, setCookingRecipeId] = useState("");
   const [removingPantryItem, setRemovingPantryItem] = useState("");
   const [online, setOnline] = useState(
     typeof navigator !== "undefined" ? navigator.onLine : true
@@ -651,8 +676,6 @@ function HomePage({ settings, userId }) {
     "jci_queued_pantry_adds",
     []
   );
-  const [selectedRecipeId, setSelectedRecipeId] = useState("");
-  const [celebrate, setCelebrate] = useState(false);
 
   const welcomeText = "Welcome!";
   const characters = useMemo(() => welcomeText.split(""), [welcomeText]);
@@ -685,7 +708,7 @@ function HomePage({ settings, userId }) {
     const loadPantry = async () => {
       try {
         const response = await fetch(
-          `${API_BASE_URL}/api/pantry?userId=${encodeURIComponent(userId)}`
+          `${API_BASE_URL}/api/pantry/?userId=${encodeURIComponent(userId)}`
         );
         if (!response.ok) return;
         const payload = await response.json();
@@ -695,19 +718,14 @@ function HomePage({ settings, userId }) {
           );
         }
       } catch {
-        /* ignore */
+        // ignore
       }
     };
     loadPantry();
     return () => {
       cancelled = true;
     };
-  }, [userId]);
-
-  useEffect(() => {
-    window.localStorage.removeItem("jci_search_ingredients");
-    window.localStorage.removeItem("jci_search_max_time");
-  }, []);
+  }, [userId, setPantryItems]);
 
   useEffect(() => {
     const onOnline = () => setOnline(true);
@@ -751,10 +769,11 @@ function HomePage({ settings, userId }) {
             remaining.push(batch);
           } else {
             const payload = await response.json();
-            if (!cancelled && Array.isArray(payload.ingredients))
+            if (!cancelled && Array.isArray(payload.ingredients)) {
               setPantryItems((current) =>
                 mergeIngredientLists(current, payload.ingredients)
               );
+            }
           }
         } catch {
           remaining.push(batch);
@@ -766,27 +785,28 @@ function HomePage({ settings, userId }) {
     return () => {
       cancelled = true;
     };
-  }, [online, queuedPantryAdds, setQueuedPantryAdds]);
+  }, [online, queuedPantryAdds, setQueuedPantryAdds, setPantryItems]);
 
   useEffect(() => {
     if (!online) return undefined;
     const interval = setInterval(async () => {
       try {
         const response = await fetch(
-          `${API_BASE_URL}/api/pantry?userId=${encodeURIComponent(userId)}`
+          `${API_BASE_URL}/api/pantry/?userId=${encodeURIComponent(userId)}`
         );
         if (!response.ok) return;
         const payload = await response.json();
-        if (Array.isArray(payload.ingredients))
+        if (Array.isArray(payload.ingredients)) {
           setPantryItems((current) =>
             mergeIngredientLists(current, payload.ingredients)
           );
+        }
       } catch {
-        /* ignore */
+        // ignore
       }
     }, 20000);
     return () => clearInterval(interval);
-  }, [online, userId]);
+  }, [online, userId, setPantryItems]);
 
   const parseIngredients = () =>
     inputValue
@@ -794,36 +814,113 @@ function HomePage({ settings, userId }) {
       .map((item) => item.trim())
       .filter(Boolean);
 
+  const buildSearchIngredients = () => {
+    const manualIngredients = parseIngredients();
+    const pantryIngredients = usePantryForSearch ? pantryItems : [];
+    return mergeIngredientLists(manualIngredients, pantryIngredients);
+  };
+
+  const hasIngredientDrivenSearch = buildSearchIngredients().length > 0;
+
+  const renderRecipeMatchSummary = (recipe) => {
+    const totalConsidered =
+      (recipe.usedIngredientCount || 0) +
+      (recipe.missedIngredientCount || 0);
+
+    if (!hasIngredientDrivenSearch) {
+      return (
+        <p className="ingredient-summary">
+          <strong>Ingredients </strong>{"("}
+          {recipe.allIngredients.length || 0}
+          {recipe.allIngredients.length
+            ? `): ${recipe.allIngredients.join(", ")}`
+            : ""}
+        </p>
+      );
+    }
+
+    if (rankingMode === "used") {
+      return (
+        <p className="ingredient-summary">
+          <strong>
+            Using {recipe.usedIngredientCount} out of {totalConsidered} ingredients:
+          </strong>{" "}
+          {recipe.usedIngredients.length
+            ? recipe.usedIngredients.join(", ")
+            : "None"}
+        </p>
+      );
+    }
+
+    return (
+      <p className="ingredient-summary">
+        <strong>
+          Missing {recipe.missedIngredientCount} out of {totalConsidered} ingredients:
+        </strong>{" "}
+        {recipe.missedIngredients.length
+          ? recipe.missedIngredients.join(", ")
+          : "None"}
+      </p>
+    );
+  };
+
+  const toggleSavedRecipe = (recipeId) => {
+    setSavedRecipeIds((current) =>
+      current.includes(recipeId)
+        ? current.filter((id) => id !== recipeId)
+        : [...current, recipeId]
+    );
+  };
+
   const searchRecipes = async () => {
-    const ingredientList = parseIngredients();
+    const ingredientList = buildSearchIngredients();
     const ingredients = ingredientList.join(",");
-    if (ingredientList.length === 0) {
-      setError("Add at least one ingredient to get started.");
+    const trimmedQuery = queryText.trim();
+
+    if (!trimmedQuery && ingredientList.length === 0) {
+      setError(
+        "Enter ingredients, use pantry ingredients, or describe what you want to eat."
+      );
       setRecipes([]);
       return;
     }
+
     setError("");
     setApiError("");
     setLoading(true);
+
     try {
       const query = new URLSearchParams({
-        ingredients,
+        userId,
         number: String(resultCount),
-        ranking: "2",
+        ranking: rankingMode === "used" ? "1" : "2",
         ignorePantry: String(ignorePantry),
       });
-      if (maxTimeMinutes) query.set("maxTime", maxTimeMinutes);
+
+      if (ingredients) {
+        query.set("ingredients", ingredients);
+      }
+
+      if (trimmedQuery) {
+        query.set("query", trimmedQuery);
+      }
+
+      if (maxTimeMinutes) {
+        query.set("maxTime", maxTimeMinutes);
+      }
 
       const response = await fetch(
-        `${API_BASE_URL}/api/spoonacular/recipes/search?${query.toString()}`
+        `${API_BASE_URL}/recipes/search?${query.toString()}`
       );
       const payload = await response.json();
-      if (!response.ok)
+
+      if (!response.ok) {
         throw new Error(
           payload?.error?.message ||
             payload?.detail ||
             "Unable to fetch recipe ideas right now."
         );
+      }
 
       const mappedRecipes = (payload.results || []).map((recipe) => ({
         id: recipe.recipeId,
@@ -837,72 +934,14 @@ function HomePage({ settings, userId }) {
         allIngredients: recipe.allIngredients || [],
       }));
 
-      const sortedRecipes = mappedRecipes.sort((a, b) => {
-        if (a.missedIngredientCount !== b.missedIngredientCount)
-          return a.missedIngredientCount - b.missedIngredientCount;
-        return b.usedIngredientCount - a.usedIngredientCount;
-      });
-      setRecipes(sortedRecipes);
-      setSelectedRecipeId("");
+      setRecipes(mappedRecipes);
     } catch (requestError) {
-      const message = requestError?.message || "";
-      if (message === "Load failed" || message === "Failed to fetch") {
-        setApiError(
-          "Could not connect to backend API. Start backend on http://localhost:4000."
-        );
-      } else {
-        setApiError(message || "Could not connect to backend API.");
-      }
+      setApiError(
+        formatRequestError(requestError, "Could not connect to backend API.")
+      );
       setRecipes([]);
     } finally {
       setLoading(false);
-    }
-  };
-
-  const saveIngredientsToPantry = async (
-    ingredientList,
-    successMessage,
-    offlineMessage = "Saved offline. Pantry will sync when connection returns."
-  ) => {
-    if (ingredientList.length === 0) {
-      setPantryError("Enter one or more ingredients, separated by commas.");
-      setPantryMessage("");
-      return false;
-    }
-    setPantryError("");
-    setPantryMessage("");
-    const previousPantry = pantryItems;
-    const optimistic = mergeIngredientLists(pantryItems, ingredientList);
-    setPantryItems(optimistic);
-    try {
-      const requestBody = {
-        user_id: userId,
-        ingredients: ingredientList.map((name) => ({ name })),
-      };
-      if (!online) {
-        setQueuedPantryAdds((current) => [...current, requestBody]);
-        setPantryMessage(offlineMessage);
-        return true;
-      }
-      const response = await fetch(`${API_BASE_URL}/api/pantry/add`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(requestBody),
-      });
-      const payload = await response.json();
-      if (!response.ok)
-        throw new Error(payload?.detail || "Could not add to pantry.");
-      if (Array.isArray(payload.ingredients) && payload.ingredients.length > 0) {
-        setPantryItems((current) =>
-          mergeIngredientLists(current, payload.ingredients)
-        );
-      }
-      setPantryMessage(successMessage);
-      return true;
-    } catch (requestError) {
-      setPantryItems(previousPantry);
-      setPantryError(requestError?.message || "Could not add to pantry.");
-      return false;
     }
   };
 
@@ -919,7 +958,9 @@ function HomePage({ settings, userId }) {
 
     const previousPantry = pantryItems;
     setPantryItems((current) =>
-      current.filter((item) => item.toLowerCase() !== ingredientName.toLowerCase())
+      current.filter(
+        (item) => item.toLowerCase() !== ingredientName.toLowerCase()
+      )
     );
 
     try {
@@ -950,8 +991,10 @@ function HomePage({ settings, userId }) {
     setInputValue((current) => (current ? `${current}, ${value}` : value));
   };
 
-  const clearIngredients = () => {
+  const clearInputs = () => {
     setInputValue("");
+    setQueryText("");
+    setUsePantryForSearch(false);
     setError("");
     setApiError("");
     setPantryError("");
@@ -967,51 +1010,6 @@ function HomePage({ settings, userId }) {
     "spinach",
     "beans",
   ];
-
-  const playSuccessChime = () => {
-    try {
-      const AudioCtx = window.AudioContext || window.webkitAudioContext;
-      if (!AudioCtx) return;
-      const ctx = new AudioCtx();
-      const oscillator = ctx.createOscillator();
-      const gainNode = ctx.createGain();
-      oscillator.type = "triangle";
-      oscillator.frequency.value = 660;
-      gainNode.gain.value = 0.05;
-      oscillator.connect(gainNode);
-      gainNode.connect(ctx.destination);
-      oscillator.start();
-      oscillator.frequency.exponentialRampToValueAtTime(
-        990,
-        ctx.currentTime + 0.22
-      );
-      gainNode.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.24);
-      oscillator.stop(ctx.currentTime + 0.24);
-    } catch {
-      /* no-op */
-    }
-  };
-
-  const completeRecipePlan = async (recipe) => {
-    const recipeIngredients = Array.from(
-      new Set((recipe.allIngredients || []).map((item) => item.trim()).filter(Boolean))
-    );
-    setCookingRecipeId(recipe.id);
-    const saved = await saveIngredientsToPantry(
-      recipeIngredients,
-      `Cooked ${recipe.title}. Added its ingredients to your pantry.`,
-      `Cooked ${recipe.title}. Its ingredients will sync to your pantry when you're back online.`
-    );
-    if (!saved) {
-      setCookingRecipeId("");
-      return;
-    }
-    setSelectedRecipeId(recipe.id);
-    setCelebrate(true);
-    playSuccessChime();
-    setTimeout(() => setCelebrate(false), 1000);
-    setCookingRecipeId("");
-  };
 
   return (
     <>
@@ -1031,20 +1029,21 @@ function HomePage({ settings, userId }) {
         aria-live="polite"
         className={showInteraction ? "show" : ""}
       >
-        {celebrate ? <ConfettiBurst /> : null}
         <section
           className="initial-search-panel gradient-card"
-          aria-label="Search by ingredients"
+          aria-label="Search by ingredients or query"
         >
           <h3 className="initial-search-title">Cook from what you have</h3>
           <p className="search-subtitle">
-            Find a recipe match, then save its ingredients to pantry when you cook it.
+            Search with ingredients, your pantry, natural language, or any combination.
           </p>
+
           {!online ? (
             <p className="sync-line">
               Offline mode: searches may fail, pantry adds will queue.
             </p>
           ) : null}
+
           {queuedPantryAdds.length > 0 ? (
             <p className="sync-line">
               Queued pantry updates: {queuedPantryAdds.length}
@@ -1067,13 +1066,61 @@ function HomePage({ settings, userId }) {
               <button
                 type="button"
                 className="clear-btn"
-                onClick={clearIngredients}
-                disabled={!inputValue.trim()}
+                onClick={clearInputs}
+                disabled={
+                  !inputValue.trim() && !queryText.trim() && !usePantryForSearch
+                }
               >
                 Clear
               </button>
             </div>
-            <label htmlFor="maxTimeInput">Max time (minutes)</label>
+
+            <div
+              className="quick-ingredients quick-ingredients-inline"
+              aria-label="Quick ingredient suggestions"
+            >
+              {quickSets.map((item) => (
+                <button
+                  key={item}
+                  type="button"
+                  className="chip-btn"
+                  onClick={() => applyIngredientSuggestion(item)}
+                >
+                  + {item}
+                </button>
+              ))}
+            </div>
+
+            <div className="ingredient-source-row">
+              <span className="ingredient-source-label">
+                Or use your saved pantry ingredients
+              </span>
+              <button
+                type="button"
+                className={`pill-toggle-btn ${
+                  usePantryForSearch ? "active" : ""
+                }`}
+                onClick={() => setUsePantryForSearch((current) => !current)}
+              >
+                {usePantryForSearch
+                  ? "Pantry ingredients included"
+                  : "Use ingredients from my pantry"}
+              </button>
+            </div>
+
+            <label htmlFor="queryInput">(Optional) Describe what you want to eat</label>
+            <input
+              type="text"
+              id="queryInput"
+              placeholder="e.g. something cozy with chicken and rice"
+              value={queryText}
+              onChange={(event) => setQueryText(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") searchRecipes();
+              }}
+            />
+
+            <label htmlFor="maxTimeInput">Max Ready Time (minutes)</label>
             <input
               type="number"
               id="maxTimeInput"
@@ -1084,25 +1131,35 @@ function HomePage({ settings, userId }) {
               value={maxTimeMinutes}
               onChange={(event) => setMaxTimeMinutes(event.target.value)}
             />
-          </div>
 
-          <div
-            className="quick-ingredients"
-            aria-label="Quick ingredient suggestions"
-          >
-            {quickSets.map((item) => (
+            <label>Rank results by</label>
+            <div
+              className="ranking-pill-group"
+              role="group"
+              aria-label="Rank results by"
+            >
               <button
-                key={item}
                 type="button"
-                className="chip-btn"
-                onClick={() => applyIngredientSuggestion(item)}
+                className={`ranking-pill ${
+                  rankingMode === "missing" ? "active" : ""
+                }`}
+                onClick={() => setRankingMode("missing")}
               >
-                + {item}
+                Fewest missing ingredients
               </button>
-            ))}
+              <button
+                type="button"
+                className={`ranking-pill ${
+                  rankingMode === "used" ? "active" : ""
+                }`}
+                onClick={() => setRankingMode("used")}
+              >
+                Most used ingredients
+              </button>
+            </div>
           </div>
 
-          <div className="search-actions">
+          <div className="search-actions search-actions-right">
             <button
               className="search-action-btn"
               id="actionBtn"
@@ -1119,6 +1176,7 @@ function HomePage({ settings, userId }) {
         {apiError ? <p className="error-text">{apiError}</p> : null}
         {pantryError ? <p className="error-text">{pantryError}</p> : null}
         {pantryMessage ? <p className="sync-line">{pantryMessage}</p> : null}
+
         <section className="card gradient-card pantry-panel" aria-label="Pantry">
           <div className="pantry-panel-top">
             <div>
@@ -1130,11 +1188,13 @@ function HomePage({ settings, userId }) {
               </p>
             </div>
           </div>
+
           {!online && pantryItems.length > 0 ? (
             <p className="sync-line pantry-offline-note">
               Go online to remove pantry items. Offline adds will still queue.
             </p>
           ) : null}
+
           {pantryItems.length > 0 ? (
             <ul className="pantry-list">
               {pantryItems.map((item) => (
@@ -1156,6 +1216,7 @@ function HomePage({ settings, userId }) {
 
         <section className="results" aria-live="polite">
           <h4>Recipe ideas</h4>
+
           {loading ? (
             <ul className="recipe-list">
               {[0, 1, 2].map((skeleton) => (
@@ -1171,64 +1232,306 @@ function HomePage({ settings, userId }) {
               ))}
             </ul>
           ) : null}
+
           {!loading && recipes.length === 0 && !error && !apiError ? (
             <p id="output">Your suggestions will appear here.</p>
           ) : null}
+
           <ul className="recipe-list">
             {recipes.map((recipe) => (
               <li
                 key={recipe.id}
-                className={`recipe-card gradient-card ${
-                  selectedRecipeId === recipe.id ? "selected-recipe" : ""
-                }`}
+                className="recipe-card gradient-card recipe-card-layout"
               >
-                <p className="recipe-title">{recipe.title}</p>
-                <p className="recipe-meta">
-                  ⏱ {recipe.readyTime ?? "?"} min • Uses{" "}
-                  {recipe.usedIngredientCount} • Missing{" "}
-                  {recipe.missedIngredientCount}
-                </p>
-                <p>
-                  Missing ingredients:{" "}
-                  {recipe.missedIngredients.length
-                    ? recipe.missedIngredients.join(", ")
-                    : "None"}
-                </p>
-                <button
-                  type="button"
-                  className="plan-btn"
-                  onClick={() => completeRecipePlan(recipe)}
-                  disabled={cookingRecipeId === recipe.id}
-                >
-                  {cookingRecipeId === recipe.id
-                    ? "Saving to pantry..."
-                    : selectedRecipeId === recipe.id
-                      ? "Cooked ✓"
-                      : "Mark as cooked"}
-                </button>
+                <div className="recipe-result-image-wrap">
+                  {recipe.imageUrl ? (
+                    <img
+                      src={recipe.imageUrl}
+                      alt={recipe.title}
+                      className="recipe-result-image"
+                    />
+                  ) : (
+                    <div className="recipe-result-image recipe-result-image-placeholder">
+                      No image
+                    </div>
+                  )}
+                </div>
+
+                <div className="recipe-result-content">
+                  <div className="recipe-card-top">
+                    <button
+                      type="button"
+                      className={`save-icon-btn ${
+                        savedRecipeIds.includes(recipe.id) ? "saved" : ""
+                      }`}
+                      onClick={() => toggleSavedRecipe(recipe.id)}
+                      aria-label={
+                        savedRecipeIds.includes(recipe.id)
+                          ? "Unsave recipe"
+                          : "Save recipe"
+                      }
+                      title={
+                        savedRecipeIds.includes(recipe.id)
+                          ? "Unsave recipe"
+                          : "Save recipe"
+                      }
+                    >
+                      {savedRecipeIds.includes(recipe.id) ? "♥" : "♡"}
+                    </button>
+                  </div>
+
+                  <p className="recipe-title">{recipe.title}</p>
+
+                  <p className="recipe-meta">⏱ {recipe.readyTime ?? "?"} min</p>
+
+                  {renderRecipeMatchSummary(recipe)}
+
+                  <button
+                    type="button"
+                    className="plan-btn"
+                    onClick={() => onOpenRecipe(recipe)}
+                  >
+                    Cook it
+                  </button>
+                </div>
               </li>
             ))}
           </ul>
-
-          {selectedRecipeId ? (
-            <section
-              className="completion-panel gradient-card"
-              aria-live="polite"
-            >
-              <h4>Saved for next time</h4>
-              <p>
-                This recipe's ingredients were added to your pantry so future
-                recipe suggestions can build on what you already have.
-              </p>
-            </section>
-          ) : null}
         </section>
       </section>
     </>
   );
 }
 
-// ─── Profile Page ─────────────────────────────────────────────────────────────
+function RecipeDetailsPage({
+  recipe,
+  userId,
+  onBack,
+  savedRecipeIds,
+  setSavedRecipeIds,
+}) {
+  const [details, setDetails] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [cookError, setCookError] = useState("");
+  const [cooking, setCooking] = useState(false);
+  const [celebrate, setCelebrate] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadRecipeDetails = async () => {
+      setLoading(true);
+      setCookError("");
+
+      try {
+        const response = await fetch(
+          `${API_BASE_URL}/recipes/api/spoonacular/recipes/${recipe.id}`
+        );
+        const payload = await response.json();
+
+        if (!response.ok) {
+          throw new Error(payload?.detail || "Could not load recipe details.");
+        }
+
+        if (!cancelled) {
+          setDetails(payload);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setCookError(error.message || "Could not load recipe details.");
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
+    };
+
+    loadRecipeDetails();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [recipe.id]);
+
+  const toggleSavedRecipe = () => {
+    setSavedRecipeIds((current) =>
+      current.includes(recipe.id)
+        ? current.filter((id) => id !== recipe.id)
+        : [...current, recipe.id]
+    );
+  };
+
+  const playSuccessChime = () => {
+    try {
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      if (!AudioCtx) return;
+      const ctx = new AudioCtx();
+      const oscillator = ctx.createOscillator();
+      const gainNode = ctx.createGain();
+      oscillator.type = "triangle";
+      oscillator.frequency.value = 660;
+      gainNode.gain.value = 0.05;
+      oscillator.connect(gainNode);
+      gainNode.connect(ctx.destination);
+      oscillator.start();
+      oscillator.frequency.exponentialRampToValueAtTime(
+        990,
+        ctx.currentTime + 0.22
+      );
+      gainNode.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.24);
+      oscillator.stop(ctx.currentTime + 0.24);
+    } catch {
+      // no-op
+    }
+  };
+
+  const markAsCooked = async () => {
+    const source = details || recipe;
+    const ingredientNames = Array.from(
+      new Set(
+        (source.extendedIngredients || [])
+          .map((item) => item?.name || item?.originalName || item?.original)
+          .filter(Boolean)
+          .map((item) => item.trim())
+      )
+    );
+
+    if (ingredientNames.length === 0) {
+      setCookError("No ingredients were found for this recipe.");
+      return;
+    }
+
+    setCooking(true);
+    setCookError("");
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/pantry/add`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          user_id: userId,
+          ingredients: ingredientNames.map((name) => ({ name })),
+        }),
+      });
+
+      const payload = await response.json();
+
+      if (!response.ok) {
+        throw new Error(payload?.detail || "Could not mark recipe as cooked.");
+      }
+
+      setCelebrate(true);
+      playSuccessChime();
+      setTimeout(() => setCelebrate(false), 1000);
+    } catch (error) {
+      setCookError(error.message || "Could not mark recipe as cooked.");
+    } finally {
+      setCooking(false);
+    }
+  };
+
+  return (
+    <section className="card gradient-card profile-card">
+      {celebrate ? <ConfettiBurst /> : null}
+
+      <div
+        className="recipe-details-top"
+        style={{
+          position: "sticky",
+          top: 0,
+          zIndex: 5,
+          background:
+            "linear-gradient(135deg, rgba(255, 248, 242, 0.98), rgba(255, 243, 233, 0.98))",
+          paddingBottom: "0.75rem",
+          marginBottom: "1rem",
+          borderBottom: "1px solid rgba(214, 111, 75, 0.16)",
+        }}
+      >
+        <button
+          type="button"
+          className="nav-btn"
+          onClick={onBack}
+          style={{
+            width: "auto",
+            margin: 0,
+            padding: "0.5rem 1rem",
+            background: "linear-gradient(135deg, #ffbe95, #ff9d6f)",
+            color: "#4b2213",
+            border: "1px solid rgba(214, 111, 75, 0.22)",
+          }}
+        >
+          ← Back to results
+        </button>
+
+        <button
+          type="button"
+          className={`save-icon-btn ${
+            savedRecipeIds.includes(recipe.id) ? "saved" : ""
+          }`}
+          onClick={toggleSavedRecipe}
+          aria-label={
+            savedRecipeIds.includes(recipe.id) ? "Unsave recipe" : "Save recipe"
+          }
+          title={
+            savedRecipeIds.includes(recipe.id) ? "Unsave recipe" : "Save recipe"
+          }
+        >
+          {savedRecipeIds.includes(recipe.id) ? "♥" : "♡"}
+        </button>
+      </div>
+
+      {loading ? <p className="sync-line">Loading recipe details...</p> : null}
+      {cookError ? <p className="error-text">{cookError}</p> : null}
+
+      {!loading && details ? (
+        <>
+          <h2 className="section-title">{details.title}</h2>
+
+          {details.image ? (
+            <img
+              src={details.image}
+              alt={details.title}
+              className="recipe-details-image"
+            />
+          ) : null}
+
+          <p className="recipe-meta">⏱ {details.readyInMinutes ?? "?"} min</p>
+
+          <h3>Ingredients</h3>
+          <ul className="recipe-detail-list">
+            {(details.extendedIngredients || []).map((ingredient, index) => (
+              <li key={ingredient.id ?? `${ingredient.name}-${index}`}>
+                {ingredient.original ||
+                  ingredient.originalName ||
+                  ingredient.name}
+              </li>
+            ))}
+          </ul>
+
+          <h3>Instructions</h3>
+          {details.instructions ? (
+            <div
+              className="recipe-instructions"
+              dangerouslySetInnerHTML={{ __html: details.instructions }}
+            />
+          ) : (
+            <p className="sync-line">No instructions available for this recipe.</p>
+          )}
+
+          <button
+            type="button"
+            className="plan-btn"
+            onClick={markAsCooked}
+            disabled={cooking}
+          >
+            {cooking ? "Saving to pantry..." : "Mark as cooked"}
+          </button>
+        </>
+      ) : null}
+    </section>
+  );
+}
 
 function ProfilePage({
   userId,
@@ -1257,7 +1560,7 @@ function ProfilePage({
     const loadPantry = async () => {
       try {
         const response = await fetch(
-          `${API_BASE_URL}/api/pantry?userId=${encodeURIComponent(userId)}`
+          `${API_BASE_URL}/api/pantry/?userId=${encodeURIComponent(userId)}`
         );
         if (!response.ok) return;
         const payload = await response.json();
@@ -1282,21 +1585,30 @@ function ProfilePage({
       setIdeasError("");
       return;
     }
+
     let cancelled = false;
     const loadIdeas = async () => {
       setIdeasLoading(true);
       setIdeasError("");
+
       try {
         const query = new URLSearchParams({
-          ingredients: pantryItems.join(","),
+          userId,
           number: String(settings.quickRecipes ? 3 : 5),
           ranking: "2",
           ignorePantry: "true",
         });
+
+        if (pantryItems.length > 0) {
+          query.set("ingredients", pantryItems.join(","));
+        }
+
         const response = await fetch(
-          `${API_BASE_URL}/api/spoonacular/recipes/search?${query.toString()}`
+          `${API_BASE_URL}/recipes/search?${query.toString()}`
         );
+
         const payload = await response.json();
+
         if (!response.ok) {
           throw new Error(
             payload?.error?.message ||
@@ -1304,6 +1616,7 @@ function ProfilePage({
               "Could not load recipe ideas."
           );
         }
+
         if (!cancelled) {
           setRecipeIdeas(payload.results || []);
         }
@@ -1318,11 +1631,12 @@ function ProfilePage({
         if (!cancelled) setIdeasLoading(false);
       }
     };
+
     loadIdeas();
     return () => {
       cancelled = true;
     };
-  }, [pantryItems, settings.quickRecipes]);
+  }, [pantryItems, settings.quickRecipes, userId]);
 
   const updateDietary = (name) => {
     setProfile((current) => ({
@@ -1347,6 +1661,7 @@ function ProfilePage({
             setProfile((current) => ({ ...current, name: event.target.value }))
           }
         />
+
         <label htmlFor="email">Email</label>
         <input
           id="email"
@@ -1381,6 +1696,7 @@ function ProfilePage({
             ))}
           </div>
         )}
+
         <textarea
           placeholder="Allergies or notes (e.g. no peanuts, lactose intolerant)"
           value={profile.notes || ""}
@@ -1397,6 +1713,7 @@ function ProfilePage({
             ? "These saved ingredients shape your future recipe suggestions."
             : "Cook a recipe on Home to start building your pantry automatically."}
         </p>
+
         {pantryItems.length > 0 ? (
           <ul className="pantry-list">
             {pantryItems.map((item) => (
@@ -1413,13 +1730,16 @@ function ProfilePage({
         {ideasLoading ? (
           <p className="sync-line">Finding recipes from your pantry...</p>
         ) : null}
+
         {ideasError ? <p className="error-text">{ideasError}</p> : null}
+
         {!ideasLoading && !ideasError && pantryItems.length === 0 ? (
           <p className="sync-line">
             Your next recipe suggestions will appear here after you cook and
             save ingredients to pantry.
           </p>
         ) : null}
+
         {!ideasLoading && !ideasError && pantryItems.length > 0 ? (
           <ul className="recipe-list">
             {recipeIdeas.length > 0 ? (
@@ -1454,13 +1774,12 @@ function ProfilePage({
   );
 }
 
-// ─── Settings Page ────────────────────────────────────────────────────────────
-
 function SettingsPage({ settings, setSettings, onSave, syncMessage, saving }) {
   const requestNotificationPermission = async () => {
     if (!("Notification" in window)) return;
-    if (Notification.permission === "default")
+    if (Notification.permission === "default") {
       await Notification.requestPermission();
+    }
     if (Notification.permission === "granted") {
       new Notification("Just Cook It", {
         body: "Progress nudges are enabled.",
@@ -1475,6 +1794,7 @@ function SettingsPage({ settings, setSettings, onSave, syncMessage, saving }) {
 
       <section className="card gradient-card settings-card">
         <h3>Experience</h3>
+
         <div className="interactive-row">
           <span>Enable notifications</span>
           <button
@@ -1491,6 +1811,7 @@ function SettingsPage({ settings, setSettings, onSave, syncMessage, saving }) {
             {settings.notifications ? "On" : "Off"}
           </button>
         </div>
+
         <div className="interactive-row">
           <span>Show quick recipes first</span>
           <button
@@ -1506,6 +1827,7 @@ function SettingsPage({ settings, setSettings, onSave, syncMessage, saving }) {
             {settings.quickRecipes ? "On" : "Off"}
           </button>
         </div>
+
         <label htmlFor="units">Units</label>
         <select
           id="units"
@@ -1520,6 +1842,7 @@ function SettingsPage({ settings, setSettings, onSave, syncMessage, saving }) {
           <option value="metric">Metric</option>
           <option value="imperial">Imperial</option>
         </select>
+
         <div className="interactive-row">
           <span>Allow usage analytics</span>
           <button
@@ -1537,6 +1860,7 @@ function SettingsPage({ settings, setSettings, onSave, syncMessage, saving }) {
             {settings.allowUsageAnalytics ? "On" : "Off"}
           </button>
         </div>
+
         <div className="interactive-row">
           <span>Progress nudges</span>
           <button
@@ -1567,8 +1891,6 @@ function SettingsPage({ settings, setSettings, onSave, syncMessage, saving }) {
     </>
   );
 }
-
-// ─── Shared Components ────────────────────────────────────────────────────────
 
 function CursorAura() {
   const [enabled, setEnabled] = useState(false);
