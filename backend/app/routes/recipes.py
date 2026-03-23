@@ -20,8 +20,9 @@ def get_recipes():
 @router.get("/search")
 def search_recipes_endpoint(
     userId: str = Query(...),
-    ingredients: str = Query(..., min_length=1),
-    number: int = Query(10, ge=1, le=20),
+    ingredients: str | None = Query(None),
+    query: str | None = Query(None),
+    number: int = Query(3, ge=1, le=20), #TODO: change number later
     ranking: int = Query(1, ge=1, le=2),
     ignorePantry: bool = Query(True),
     maxTime: int | None = Query(None, ge=1, le=300)
@@ -29,6 +30,7 @@ def search_recipes_endpoint(
     return search_recipes_complex(
         user_id=userId,
         ingredients=ingredients,
+        query_text=query,
         number=number,
         ranking=ranking,
         ignore_pantry=ignorePantry,

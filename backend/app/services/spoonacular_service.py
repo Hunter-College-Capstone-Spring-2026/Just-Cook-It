@@ -6,11 +6,12 @@ from app.services.supabase_service import get_user_profile
 
 def search_recipes_complex(
     user_id: str,
-    ingredients: str,
+    ingredients: str | None = None,
+    query_text: str | None = None,
     number: int = 3,
     ranking: int = 1,
     ignore_pantry: bool = True,
-    max_ready_time: int | None = None,
+    max_ready_time: int | None = None
 ):
     url = f"{settings.spoonacular_base_url}/recipes/complexSearch"
 
@@ -18,29 +19,38 @@ def search_recipes_complex(
     dietary = user_profile.get("dietary", {})
 
     normalized_ingredients = ",".join(
-        [part.strip() for part in ingredients.split(",") if part.strip()]
+        [part.strip() for part in (ingredients or "").split(",") if part.strip()]
     )
+    normalized_query = (query_text or "").strip()
+
+    if not normalized_ingredients and not normalized_query:
+        raise HTTPException(
+            status_code=400,
+            detail="Provide at least one ingredient or a natural language query."
+        )
 
     params = {
         "apiKey": settings.spoonacular_api_key,
-        "includeIngredients": normalized_ingredients,
         "number": number,
         "addRecipeInformation": True,
         "fillIngredients": True,
         "ignorePantry": str(ignore_pantry).lower(),
     }
 
-    # ranking from frontend
+    if normalized_ingredients:
+        params["includeIngredients"] = normalized_ingredients
+
+    if normalized_query:
+        params["query"] = normalized_query
+
     if ranking == 1:
         params["sort"] = "max-used-ingredients"
     else:
         params["sort"] = "min-missing-ingredients"
 
-    # optional max time
     if max_ready_time is not None:
         params["maxReadyTime"] = max_ready_time
 
-    # dietary filtering from user profile
     if dietary.get("vegetarian"):
         params["diet"] = "vegetarian"
     elif dietary.get("vegan"):
