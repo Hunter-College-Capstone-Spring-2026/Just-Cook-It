@@ -71,15 +71,279 @@ function formatRequestError(error, fallbackMessage) {
   return message || fallbackMessage;
 }
 
+function splitInstructionText(text) {
+  return (text.match(/[^.!?]+[.!?]+|[^.!?]+$/g) || [text])
+    .map((step) => step.replace(/\s+/g, " ").trim())
+    .filter(Boolean);
+}
+
+function extractInstructionBlocks(instructions) {
+  if (!instructions) return [];
+
+  if (typeof window !== "undefined" && "DOMParser" in window) {
+    try {
+      const parser = new window.DOMParser();
+      const doc = parser.parseFromString(instructions, "text/html");
+
+      const listItems = Array.from(doc.querySelectorAll("li"))
+        .map((node) => node.textContent?.replace(/\s+/g, " ").trim())
+        .filter(Boolean);
+      if (listItems.length > 0) return listItems;
+
+      const paragraphs = Array.from(doc.querySelectorAll("p"))
+        .map((node) => node.textContent?.replace(/\s+/g, " ").trim())
+        .filter(Boolean);
+      if (paragraphs.length > 1) return paragraphs;
+
+      const plainText = doc.body.textContent?.replace(/\s+/g, " ").trim() || "";
+      return plainText ? splitInstructionText(plainText) : [];
+    } catch {
+      // Fall through to the plain-text cleanup below.
+    }
+  }
+
+  const plainText = instructions
+    .replace(/<[^>]+>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  return plainText ? splitInstructionText(plainText) : [];
+}
+
+function buildGuideSteps(recipeDetails) {
+  const analyzedSteps = (recipeDetails?.analyzedInstructions || [])
+    .flatMap((section) => (Array.isArray(section?.steps) ? section.steps : []))
+    .map((step, index) => ({
+      number: index + 1,
+      text: step?.step?.trim() || "",
+      ingredients: mergeIngredientLists(
+        [],
+        (step?.ingredients || []).map((item) => item?.name || "")
+      ),
+      equipment: mergeIngredientLists(
+        [],
+        (step?.equipment || []).map((item) => item?.name || "")
+      ),
+      duration:
+        step?.length?.number && step?.length?.unit
+          ? `${step.length.number} ${step.length.unit}`
+          : "",
+    }))
+    .filter((step) => step.text);
+
+  if (analyzedSteps.length > 0) return analyzedSteps;
+
+  return extractInstructionBlocks(recipeDetails?.instructions).map((text, index) => ({
+    number: index + 1,
+    text,
+    ingredients: [],
+    equipment: [],
+    duration: "",
+  }));
+}
+
+const CUISINE_KEYWORDS = {
+  Italian: ["italian", "pasta", "risotto", "parmesan", "alfredo", "marinara"],
+  Mexican: ["mexican", "taco", "quesadilla", "enchilada", "salsa", "burrito"],
+  Indian: ["indian", "curry", "masala", "tikka", "naan", "dal"],
+  Japanese: ["japanese", "ramen", "teriyaki", "miso", "udon", "sushi"],
+  Chinese: ["chinese", "lo mein", "fried rice", "dumpling", "wonton"],
+  Thai: ["thai", "pad thai", "coconut curry", "satay", "lemongrass"],
+  Korean: ["korean", "kimchi", "bulgogi", "gochujang"],
+  Mediterranean: ["mediterranean", "hummus", "falafel", "tabbouleh", "tahini"],
+  Greek: ["greek", "tzatziki", "feta", "gyro", "orzo"],
+  French: ["french", "gratin", "coq au vin", "crepe", "quiche"],
+  Spanish: ["spanish", "paella", "patatas bravas", "chorizo"],
+  American: ["burger", "barbecue", "bbq", "mac and cheese", "meatloaf"],
+};
+
+function cleanText(value) {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function normalizeStringList(values) {
+  if (!Array.isArray(values)) return [];
+
+  const seen = new Set();
+  return values
+    .map((item) => cleanText(item))
+    .filter((item) => {
+      const key = item.toLowerCase();
+      if (!item || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+}
+
+function normalizeCookedRecipe(recipe) {
+  if (!recipe || typeof recipe !== "object") return null;
+
+  const recipeId = Number(recipe.recipeId ?? recipe.id);
+  const title = cleanText(recipe.title ?? recipe.recipeName);
+  if (!Number.isFinite(recipeId) || !title) return null;
+
+  const readyInMinutes = Number.isFinite(Number(recipe.readyInMinutes))
+    ? Number(recipe.readyInMinutes)
+    : null;
+
+  return {
+    recipeId,
+    title,
+    image: cleanText(recipe.image),
+    readyInMinutes,
+    cuisines: normalizeStringList(recipe.cuisines),
+    dishTypes: normalizeStringList(recipe.dishTypes),
+    ingredients: normalizeStringList(recipe.ingredients),
+    cookedAt: cleanText(recipe.cookedAt) || new Date().toISOString(),
+  };
+}
+
+function mergeCookedRecipes(base, incoming) {
+  const combined = [...(incoming || []), ...(base || [])]
+    .map((recipe) => normalizeCookedRecipe(recipe))
+    .filter(Boolean);
+
+  const deduped = new Map();
+  combined.forEach((recipe) => {
+    const key = `${recipe.recipeId}-${recipe.cookedAt}`;
+    if (!deduped.has(key)) {
+      deduped.set(key, recipe);
+    }
+  });
+
+  return Array.from(deduped.values())
+    .sort(
+      (left, right) =>
+        new Date(right.cookedAt).getTime() - new Date(left.cookedAt).getTime()
+    )
+    .slice(0, 30);
+}
+
+function inferRecipeCuisines(recipe) {
+  const direct = normalizeStringList(recipe?.cuisines);
+  if (direct.length > 0) return direct;
+
+  const haystack = [
+    cleanText(recipe?.title),
+    ...normalizeStringList(recipe?.dishTypes),
+    ...normalizeStringList(recipe?.ingredients),
+  ]
+    .join(" ")
+    .toLowerCase();
+
+  return Object.entries(CUISINE_KEYWORDS)
+    .filter(([, keywords]) => keywords.some((keyword) => haystack.includes(keyword)))
+    .map(([cuisine]) => cuisine);
+}
+
+function analyzeCookedRecipes(recipes) {
+  const counts = new Map();
+
+  (recipes || []).forEach((recipe) => {
+    inferRecipeCuisines(recipe).forEach((cuisine) => {
+      counts.set(cuisine, (counts.get(cuisine) || 0) + 1);
+    });
+  });
+
+  const breakdown = Array.from(counts.entries())
+    .sort((left, right) => right[1] - left[1])
+    .map(([label, count]) => ({ label, count }))
+    .slice(0, 4);
+
+  if (breakdown.length === 0) {
+    return {
+      favoriteCuisine: "Still forming",
+      note: "Cook a few dishes to reveal it.",
+      breakdown: [],
+    };
+  }
+
+  const [first, second] = breakdown;
+  return {
+    favoriteCuisine: first.label,
+    note: second ? `${first.label} leads. ${second.label} next.` : `${first.label} leads.`,
+    breakdown,
+  };
+}
+
+function formatCookedDate(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "Recently";
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+  }).format(date);
+}
+
+function CookingPanIcon({ className = "" }) {
+  return (
+    <svg
+      viewBox="0 0 160 160"
+      className={className}
+      aria-hidden="true"
+      focusable="false"
+    >
+      <defs>
+        <linearGradient id="panBody" x1="0%" x2="100%" y1="0%" y2="100%">
+          <stop offset="0%" stopColor="#ffca98" />
+          <stop offset="100%" stopColor="#ff945f" />
+        </linearGradient>
+        <linearGradient id="panGlow" x1="0%" x2="100%" y1="0%" y2="100%">
+          <stop offset="0%" stopColor="rgba(255,255,255,0.9)" />
+          <stop offset="100%" stopColor="rgba(255,236,222,0.4)" />
+        </linearGradient>
+      </defs>
+      <g fill="none" fillRule="evenodd">
+        <path
+          d="M44 96c0-16.6 13.4-30 30-30h23c18.8 0 34 15.2 34 34v4H52c-4.4 0-8-3.6-8-8Z"
+          fill="url(#panBody)"
+          stroke="#c9643d"
+          strokeWidth="4"
+        />
+        <path
+          d="M110 87h18c10.5 0 19 8.5 19 19"
+          stroke="#c9643d"
+          strokeLinecap="round"
+          strokeWidth="6"
+        />
+        <path
+          d="M54 104h78"
+          stroke="url(#panGlow)"
+          strokeLinecap="round"
+          strokeWidth="4"
+        />
+        <ellipse cx="82" cy="98" rx="22" ry="9" fill="#fff3e8" opacity="0.8" />
+        <path
+          d="M67 63c-6-7-5-13 2-18M88 54c-6-7-5-13 2-18M108 63c-6-7-5-13 2-18"
+          stroke="#d66f4b"
+          strokeLinecap="round"
+          strokeWidth="5"
+        />
+        <circle cx="54" cy="34" r="10" fill="#fff8f2" opacity="0.8" />
+        <circle cx="122" cy="38" r="7" fill="#fff1e8" opacity="0.75" />
+      </g>
+    </svg>
+  );
+}
+
 function App() {
   const [authUser, setAuthUser] = useLocalStorage("jci_auth_user", null);
   const [activePage, setActivePage] = useState("home");
+  const [appReady, setAppReady] = useState(false);
   const [profile, setProfile] = useLocalStorage("jci_profile", defaultProfile);
   const [settings, setSettings] = useLocalStorage(
     "jci_settings",
     defaultSettings
   );
   const [selectedRecipe, setSelectedRecipe] = useState(null);
+  const [cookedRecipes, setCookedRecipes] = useLocalStorage(
+    `jci_cooked_recipes_${authUser?.userId || "guest"}`,
+    []
+  );
+  const [pantryLanding, setPantryLanding] = useState({
+    pantryItems: [],
+    recentlyAdded: [],
+    recipeTitle: "",
+  });
   const [savedRecipeIds, setSavedRecipeIds] = useLocalStorage(
     "jci_saved_recipes",
     []
@@ -95,12 +359,14 @@ function App() {
   );
   const [savingProfile, setSavingProfile] = useState(false);
   const [savingSettings, setSavingSettings] = useState(false);
+  const [resettingCookedHistory, setResettingCookedHistory] = useState(false);
 
   const isLoggedIn = !!authUser;
 
   const navItems = isLoggedIn
     ? [
         { id: "home", label: "Home" },
+        { id: "pantry", label: "Pantry" },
         { id: "profile", label: "Profile" },
         { id: "settings", label: "Settings" },
       ]
@@ -111,6 +377,24 @@ function App() {
       setActivePage("signin");
     }
   }, [isLoggedIn, activePage]);
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
+    if (mediaQuery.matches) {
+      setAppReady(true);
+      return undefined;
+    }
+
+    let timeoutId = 0;
+    const frameId = window.requestAnimationFrame(() => {
+      timeoutId = window.setTimeout(() => setAppReady(true), 90);
+    });
+
+    return () => {
+      window.cancelAnimationFrame(frameId);
+      window.clearTimeout(timeoutId);
+    };
+  }, []);
 
   useEffect(() => {
     if (!userId) return;
@@ -134,7 +418,16 @@ function App() {
         if (profileResp.ok) {
           const profilePayload = await profileResp.json();
           if (isMounted) {
-            setProfile((current) => mergeProfile(current, profilePayload));
+            const {
+              cookedRecipes: remoteCookedRecipes = [],
+              ...profileFields
+            } = profilePayload;
+            setProfile((current) => mergeProfile(current, profileFields));
+            if (Array.isArray(remoteCookedRecipes)) {
+              setCookedRecipes((current) =>
+                mergeCookedRecipes(current, remoteCookedRecipes)
+              );
+            }
             setProfileSyncMessage("Profile synced with Supabase.");
           }
         } else if (isMounted) {
@@ -170,7 +463,7 @@ function App() {
     return () => {
       isMounted = false;
     };
-  }, [setProfile, setSettings, userId]);
+  }, [setCookedRecipes, setProfile, setSettings, userId]);
 
   const saveProfile = async () => {
     setSavingProfile(true);
@@ -228,14 +521,109 @@ function App() {
     setProfile(defaultProfile);
     setActivePage("signin");
     setSelectedRecipe(null);
+    setPantryLanding({
+      pantryItems: [],
+      recentlyAdded: [],
+      recipeTitle: "",
+    });
+  };
+
+  const handlePageChange = (pageId, options = {}) => {
+    const { preservePantryContext = false } = options;
+
+    setActivePage(pageId);
+    if (pageId !== "home") {
+      setSelectedRecipe(null);
+    }
+
+    if (pageId !== "pantry" || !preservePantryContext) {
+      setPantryLanding((current) => ({
+        ...current,
+        recentlyAdded: [],
+        recipeTitle: "",
+      }));
+    }
+  };
+
+  const recordCookedRecipe = (recipeEntry) => {
+    const normalized = normalizeCookedRecipe(recipeEntry);
+    if (!normalized) return;
+
+    setCookedRecipes((current) => mergeCookedRecipes(current, [normalized]));
+
+    if (!userId) return;
+
+    void fetch(`${API_BASE_URL}/api/users/cooked-recipes`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        userId,
+        recipe: normalized,
+      }),
+    })
+      .then(async (response) => {
+        const payload = await response.json().catch(() => ({}));
+        if (response.ok && Array.isArray(payload.recipes)) {
+          setCookedRecipes((current) =>
+            mergeCookedRecipes(current, payload.recipes)
+          );
+        }
+      })
+      .catch(() => {
+        // keep local history when backend sync is unavailable
+      });
+  };
+
+  const resetCookedRecipes = async () => {
+    if (!userId) return;
+
+    const previousCookedRecipes = cookedRecipes;
+    setResettingCookedHistory(true);
+
+    try {
+      const response = await fetch(
+        `${API_BASE_URL}/api/users/cooked-recipes?userId=${encodeURIComponent(
+          userId
+        )}`,
+        { method: "DELETE" }
+      );
+      const payload = await response.json();
+
+      if (!response.ok) {
+        throw new Error(payload?.detail || "Could not clear cooked history.");
+      }
+
+      setCookedRecipes(Array.isArray(payload.recipes) ? payload.recipes : []);
+      setPantryLanding((current) => ({
+        ...current,
+        recentlyAdded: [],
+        recipeTitle: "",
+      }));
+      setProfileSyncMessage(
+        payload.warning
+          ? `Cleared with warning: ${payload.warning}`
+          : "Cooked history cleared."
+      );
+    } catch (error) {
+      setCookedRecipes(previousCookedRecipes);
+      setProfileSyncMessage(error.message || "Could not clear cooked history.");
+    } finally {
+      setResettingCookedHistory(false);
+    }
   };
 
   if (!isLoggedIn) {
     return (
-      <>
+      <div className={`app-shell ${appReady ? "is-ready" : ""}`}>
+        <div className="app-calm-overlay" aria-hidden="true" />
         <CursorAura />
         <header className="navbar">
-          <h1 className="logo">Just Cook It!</h1>
+          <h1 className="logo">
+            <span className="logo-mark">
+              <CookingPanIcon className="logo-icon" />
+            </span>
+            <span>Just Cook It!</span>
+          </h1>
           <nav>
             <ul className="nav-links">
               <li>
@@ -286,15 +674,21 @@ function App() {
             )}
           </section>
         </main>
-      </>
+      </div>
     );
   }
 
   return (
-    <>
+    <div className={`app-shell ${appReady ? "is-ready" : ""}`}>
+      <div className="app-calm-overlay" aria-hidden="true" />
       <CursorAura />
       <header className="navbar">
-        <h1 className="logo">Just Cook It!</h1>
+        <h1 className="logo">
+          <span className="logo-mark">
+            <CookingPanIcon className="logo-icon" />
+          </span>
+          <span>Just Cook It!</span>
+        </h1>
         <nav>
           <ul className="nav-links">
             {navItems.map((item) => (
@@ -304,12 +698,7 @@ function App() {
                   className={`nav-btn ${
                     activePage === item.id ? "active" : ""
                   }`}
-                  onClick={() => {
-                    setActivePage(item.id);
-                    if (item.id !== "home") {
-                      setSelectedRecipe(null);
-                    }
-                  }}
+                  onClick={() => handlePageChange(item.id)}
                 >
                   {item.label}
                 </button>
@@ -343,11 +732,34 @@ function App() {
                   recipe={selectedRecipe}
                   userId={userId}
                   onBack={() => setSelectedRecipe(null)}
+                  onCookedRecipe={recordCookedRecipe}
+                  onCooked={({ pantryItems, recentlyAdded, recipeTitle }) => {
+                    setPantryLanding({
+                      pantryItems,
+                      recentlyAdded,
+                      recipeTitle,
+                    });
+                    handlePageChange("pantry", {
+                      preservePantryContext: true,
+                    });
+                  }}
                   savedRecipeIds={savedRecipeIds}
                   setSavedRecipeIds={setSavedRecipeIds}
                 />
               ) : null}
             </>
+          )}
+
+          {activePage === "pantry" && (
+            <PantryPage
+              userId={userId}
+              initialPantryItems={pantryLanding.pantryItems}
+              recentlyAdded={pantryLanding.recentlyAdded}
+              recipeTitle={pantryLanding.recipeTitle}
+              lastCookedRecipe={cookedRecipes[0] || null}
+              cookedRecipes={cookedRecipes}
+              onGoHome={() => handlePageChange("home")}
+            />
           )}
 
           {activePage === "profile" && (
@@ -356,9 +768,12 @@ function App() {
               profile={profile}
               setProfile={setProfile}
               settings={settings}
+              cookedRecipes={cookedRecipes}
+              onResetCooked={resetCookedRecipes}
               onSave={saveProfile}
               syncMessage={profileSyncMessage}
               saving={savingProfile}
+              resettingCooked={resettingCookedHistory}
             />
           )}
 
@@ -382,18 +797,13 @@ function App() {
             className={`quick-nav-btn ${
               activePage === item.id ? "active" : ""
             }`}
-            onClick={() => {
-              setActivePage(item.id);
-              if (item.id !== "home") {
-                setSelectedRecipe(null);
-              }
-            }}
+            onClick={() => handlePageChange(item.id)}
           >
             {item.label}
           </button>
-        ))}
-      </nav>
-    </>
+          ))}
+        </nav>
+    </div>
   );
 }
 
@@ -652,8 +1062,8 @@ function HomePage({
   setSavedRecipeIds,
 }) {
   const [inputValue, setInputValue] = useState("");
+  const [manualIngredients, setManualIngredients] = useState([]);
   const [queryText, setQueryText] = useState("");
-  const [usePantryForSearch, setUsePantryForSearch] = useState(false);
   const [maxTimeMinutes, setMaxTimeMinutes] = useState("");
   const [rankingMode, setRankingMode] = useState("missing");
   const [visibleChars, setVisibleChars] = useState(0);
@@ -662,13 +1072,10 @@ function HomePage({
   const [loading, setLoading] = useState(false);
   const [apiError, setApiError] = useState("");
   const [recipes, setRecipes] = useState([]);
-  const [pantryItems, setPantryItems] = useLocalStorage(
+  const [, setPantryItems] = useLocalStorage(
     `jci_pantry_${userId || "guest"}`,
     []
   );
-  const [pantryMessage, setPantryMessage] = useState("");
-  const [pantryError, setPantryError] = useState("");
-  const [removingPantryItem, setRemovingPantryItem] = useState("");
   const [online, setOnline] = useState(
     typeof navigator !== "undefined" ? navigator.onLine : true
   );
@@ -808,16 +1215,15 @@ function HomePage({
     return () => clearInterval(interval);
   }, [online, userId, setPantryItems]);
 
-  const parseIngredients = () =>
-    inputValue
-      .split(",")
+  const parseIngredientDraft = (value) =>
+    value
+      .split(/[,\n]/)
       .map((item) => item.trim())
       .filter(Boolean);
 
   const buildSearchIngredients = () => {
-    const manualIngredients = parseIngredients();
-    const pantryIngredients = usePantryForSearch ? pantryItems : [];
-    return mergeIngredientLists(manualIngredients, pantryIngredients);
+    const draftIngredients = parseIngredientDraft(inputValue);
+    return mergeIngredientLists(manualIngredients, draftIngredients);
   };
 
   const hasIngredientDrivenSearch = buildSearchIngredients().length > 0;
@@ -873,20 +1279,25 @@ function HomePage({
   };
 
   const searchRecipes = async () => {
+    const draftIngredients = parseIngredientDraft(inputValue);
     const ingredientList = buildSearchIngredients();
     const ingredients = ingredientList.join(",");
     const trimmedQuery = queryText.trim();
 
     if (!trimmedQuery && ingredientList.length === 0) {
-      setError(
-        "Enter ingredients, use pantry ingredients, or describe what you want to eat."
-      );
+      setError("Enter ingredients or describe what you want to eat.");
       setRecipes([]);
       return;
     }
 
     setError("");
     setApiError("");
+    if (draftIngredients.length > 0) {
+      setManualIngredients((current) =>
+        mergeIngredientLists(current, draftIngredients)
+      );
+      setInputValue("");
+    }
     setLoading(true);
 
     try {
@@ -945,60 +1356,32 @@ function HomePage({
     }
   };
 
-  const removeFromPantry = async (ingredientName) => {
-    if (!online) {
-      setPantryError("Go online to remove pantry items.");
-      setPantryMessage("");
-      return;
-    }
+  const addIngredients = (rawValue = inputValue) => {
+    const nextItems = parseIngredientDraft(rawValue);
+    if (nextItems.length === 0) return;
 
-    setRemovingPantryItem(ingredientName);
-    setPantryError("");
-    setPantryMessage("");
+    setManualIngredients((current) => mergeIngredientLists(current, nextItems));
+    setInputValue("");
+    setError("");
+  };
 
-    const previousPantry = pantryItems;
-    setPantryItems((current) =>
-      current.filter(
-        (item) => item.toLowerCase() !== ingredientName.toLowerCase()
-      )
+  const removeManualIngredient = (ingredientName) => {
+    setManualIngredients((current) =>
+      current.filter((item) => item.toLowerCase() !== ingredientName.toLowerCase())
     );
-
-    try {
-      const response = await fetch(`${API_BASE_URL}/api/pantry/remove`, {
-        method: "DELETE",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          user_id: userId,
-          ingredient_name: ingredientName,
-        }),
-      });
-      const payload = await response.json();
-      if (!response.ok)
-        throw new Error(payload?.detail || "Could not remove from pantry.");
-      setPantryItems(
-        Array.isArray(payload.ingredients) ? payload.ingredients : []
-      );
-      setPantryMessage(`Removed ${ingredientName} from pantry.`);
-    } catch (requestError) {
-      setPantryItems(previousPantry);
-      setPantryError(requestError?.message || "Could not remove from pantry.");
-    } finally {
-      setRemovingPantryItem("");
-    }
   };
 
   const applyIngredientSuggestion = (value) => {
-    setInputValue((current) => (current ? `${current}, ${value}` : value));
+    setManualIngredients((current) => mergeIngredientLists(current, [value]));
+    setError("");
   };
 
   const clearInputs = () => {
     setInputValue("");
+    setManualIngredients([]);
     setQueryText("");
-    setUsePantryForSearch(false);
     setError("");
     setApiError("");
-    setPantryError("");
-    setPantryMessage("");
   };
 
   const quickSets = [
@@ -1013,16 +1396,36 @@ function HomePage({
 
   return (
     <>
-      <h2 id="welcome" className="welcome-text" aria-label="Welcome">
-        {characters.slice(0, visibleChars).map((char, index) => (
-          <span
-            key={`${char}-${index}`}
-            style={{ animationDelay: `${index * 0.05}s` }}
-          >
-            {char === " " ? "\u00A0" : char}
-          </span>
-        ))}
-      </h2>
+      <section className="home-hero-card card gradient-card">
+        <div className="home-hero-copy">
+          <p className="home-kicker">Home</p>
+          <h2 id="welcome" className="welcome-text welcome-text-home" aria-label="Welcome">
+            {characters.slice(0, visibleChars).map((char, index) => (
+              <span
+                key={`${char}-${index}`}
+                style={{ animationDelay: `${index * 0.05}s` }}
+              >
+                {char === " " ? "\u00A0" : char}
+              </span>
+            ))}
+          </h2>
+          <p className="home-hero-title">Cook with what is already in your kitchen.</p>
+          <p className="search-subtitle home-search-subtitle">
+            Add ingredients or describe the meal you want.
+          </p>
+
+          <div className="home-hero-pills">
+            <span className="home-hero-pill">
+              {manualIngredients.length} picked
+            </span>
+          </div>
+        </div>
+
+        <div className="home-hero-art" aria-hidden="true">
+          <div className="home-hero-art-glow" />
+          <CookingPanIcon className="home-pan-icon" />
+        </div>
+      </section>
 
       <section
         id="interaction"
@@ -1033,34 +1436,40 @@ function HomePage({
           className="initial-search-panel gradient-card"
           aria-label="Search by ingredients or query"
         >
-          <h3 className="initial-search-title">Cook from what you have</h3>
+          <h3 className="initial-search-title">Start with ingredients</h3>
           <p className="search-subtitle">
-            Search with ingredients, your pantry, natural language, or any combination.
+            Build a quick list, then search.
           </p>
 
           {!online ? (
             <p className="sync-line">
-              Offline mode: searches may fail, pantry adds will queue.
+              Offline mode: searches may fail, saved updates will queue.
             </p>
           ) : null}
 
           {queuedPantryAdds.length > 0 ? (
             <p className="sync-line">
-              Queued pantry updates: {queuedPantryAdds.length}
+              Queued updates: {queuedPantryAdds.length}
             </p>
           ) : null}
 
           <div className="search-fields">
-            <label htmlFor="userInput">Ingredients (comma-separated)</label>
+            <label htmlFor="userInput">Ingredients</label>
             <div className="ingredient-input-row">
               <input
                 type="text"
                 id="userInput"
-                placeholder="e.g. chicken, rice, spinach"
+                placeholder="Type an ingredient and press Enter"
                 value={inputValue}
                 onChange={(event) => setInputValue(event.target.value)}
                 onKeyDown={(event) => {
-                  if (event.key === "Enter") searchRecipes();
+                  if (event.key === "Enter" || event.key === ",") {
+                    event.preventDefault();
+                    addIngredients();
+                  }
+                  if (event.key === "Backspace" && !inputValue.trim()) {
+                    setManualIngredients((current) => current.slice(0, -1));
+                  }
                 }}
               />
               <button
@@ -1068,12 +1477,33 @@ function HomePage({
                 className="clear-btn"
                 onClick={clearInputs}
                 disabled={
-                  !inputValue.trim() && !queryText.trim() && !usePantryForSearch
+                  !inputValue.trim() &&
+                  manualIngredients.length === 0 &&
+                  !queryText.trim()
                 }
               >
-                Clear
+                Reset
               </button>
             </div>
+
+            {manualIngredients.length > 0 ? (
+              <div className="selected-ingredients">
+                {manualIngredients.map((item) => (
+                  <button
+                    key={item}
+                    type="button"
+                    className="selected-ingredient-chip"
+                    onClick={() => removeManualIngredient(item)}
+                    aria-label={`Remove ${item}`}
+                  >
+                    <span>{item}</span>
+                    <span className="selected-ingredient-close">×</span>
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <p className="field-hint">Press Enter to add each ingredient.</p>
+            )}
 
             <div
               className="quick-ingredients quick-ingredients-inline"
@@ -1091,28 +1521,11 @@ function HomePage({
               ))}
             </div>
 
-            <div className="ingredient-source-row">
-              <span className="ingredient-source-label">
-                Or use your saved pantry ingredients
-              </span>
-              <button
-                type="button"
-                className={`pill-toggle-btn ${
-                  usePantryForSearch ? "active" : ""
-                }`}
-                onClick={() => setUsePantryForSearch((current) => !current)}
-              >
-                {usePantryForSearch
-                  ? "Pantry ingredients included"
-                  : "Use ingredients from my pantry"}
-              </button>
-            </div>
-
-            <label htmlFor="queryInput">(Optional) Describe what you want to eat</label>
+            <label htmlFor="queryInput">Describe the meal</label>
             <input
               type="text"
               id="queryInput"
-              placeholder="e.g. something cozy with chicken and rice"
+              placeholder="Something cozy, spicy, quick, or weeknight-friendly"
               value={queryText}
               onChange={(event) => setQueryText(event.target.value)}
               onKeyDown={(event) => {
@@ -1120,14 +1533,14 @@ function HomePage({
               }}
             />
 
-            <label htmlFor="maxTimeInput">Max Ready Time (minutes)</label>
+            <label htmlFor="maxTimeInput">Max time</label>
             <input
               type="number"
               id="maxTimeInput"
               className="time-input-compact"
               min="1"
               max="300"
-              placeholder="Optional, e.g. 30"
+              placeholder="Optional"
               value={maxTimeMinutes}
               onChange={(event) => setMaxTimeMinutes(event.target.value)}
             />
@@ -1167,52 +1580,13 @@ function HomePage({
               onClick={searchRecipes}
               disabled={loading}
             >
-              {loading ? "Finding recipes..." : "Cook it!"}
+              {loading ? "Finding recipes..." : "Find recipes"}
             </button>
           </div>
         </section>
 
         {error ? <p className="error-text">{error}</p> : null}
         {apiError ? <p className="error-text">{apiError}</p> : null}
-        {pantryError ? <p className="error-text">{pantryError}</p> : null}
-        {pantryMessage ? <p className="sync-line">{pantryMessage}</p> : null}
-
-        <section className="card gradient-card pantry-panel" aria-label="Pantry">
-          <div className="pantry-panel-top">
-            <div>
-              <h4 className="section-title">Your pantry</h4>
-              <p className="sync-line pantry-summary">
-                {pantryItems.length > 0
-                  ? "Saved ingredients for future recipe suggestions. No quantities, just a simple list."
-                  : "No pantry items yet. Add ingredients above to save them here."}
-              </p>
-            </div>
-          </div>
-
-          {!online && pantryItems.length > 0 ? (
-            <p className="sync-line pantry-offline-note">
-              Go online to remove pantry items. Offline adds will still queue.
-            </p>
-          ) : null}
-
-          {pantryItems.length > 0 ? (
-            <ul className="pantry-list">
-              {pantryItems.map((item) => (
-                <li key={item} className="pantry-chip">
-                  <span>{item}</span>
-                  <button
-                    type="button"
-                    className="pantry-remove-btn"
-                    onClick={() => removeFromPantry(item)}
-                    disabled={!online || removingPantryItem === item}
-                  >
-                    {removingPantryItem === item ? "Removing..." : "Remove"}
-                  </button>
-                </li>
-              ))}
-            </ul>
-          ) : null}
-        </section>
 
         <section className="results" aria-live="polite">
           <h4>Recipe ideas</h4>
@@ -1307,6 +1681,8 @@ function RecipeDetailsPage({
   recipe,
   userId,
   onBack,
+  onCookedRecipe,
+  onCooked,
   savedRecipeIds,
   setSavedRecipeIds,
 }) {
@@ -1315,6 +1691,14 @@ function RecipeDetailsPage({
   const [cookError, setCookError] = useState("");
   const [cooking, setCooking] = useState(false);
   const [celebrate, setCelebrate] = useState(false);
+  const [guideMode, setGuideMode] = useState(false);
+  const [activeGuideStep, setActiveGuideStep] = useState(0);
+  const [completedGuideSteps, setCompletedGuideSteps] = useState([]);
+  const guideSteps = useMemo(() => buildGuideSteps(details), [details]);
+  const currentGuideStep = guideSteps[activeGuideStep] || null;
+  const guideProgress = guideSteps.length
+    ? Math.round(((activeGuideStep + 1) / guideSteps.length) * 100)
+    : 0;
 
   useEffect(() => {
     let cancelled = false;
@@ -1354,6 +1738,18 @@ function RecipeDetailsPage({
     };
   }, [recipe.id]);
 
+  useEffect(() => {
+    setGuideMode(false);
+    setActiveGuideStep(0);
+    setCompletedGuideSteps([]);
+  }, [recipe.id]);
+
+  useEffect(() => {
+    if (!celebrate) return undefined;
+    const timeoutId = window.setTimeout(() => setCelebrate(false), 1000);
+    return () => window.clearTimeout(timeoutId);
+  }, [celebrate]);
+
   const toggleSavedRecipe = () => {
     setSavedRecipeIds((current) =>
       current.includes(recipe.id)
@@ -1383,6 +1779,35 @@ function RecipeDetailsPage({
       oscillator.stop(ctx.currentTime + 0.24);
     } catch {
       // no-op
+    }
+  };
+
+  const startGuide = () => {
+    setGuideMode(true);
+    setActiveGuideStep(0);
+    setCompletedGuideSteps([]);
+  };
+
+  const resetGuide = () => {
+    setGuideMode(false);
+    setActiveGuideStep(0);
+    setCompletedGuideSteps([]);
+  };
+
+  const goToGuideStep = (index) => {
+    setGuideMode(true);
+    setActiveGuideStep(index);
+  };
+
+  const completeCurrentGuideStep = () => {
+    setCompletedGuideSteps((current) =>
+      current.includes(activeGuideStep)
+        ? current
+        : [...current, activeGuideStep].sort((left, right) => left - right)
+    );
+
+    if (activeGuideStep < guideSteps.length - 1) {
+      setActiveGuideStep((current) => current + 1);
     }
   };
 
@@ -1421,9 +1846,28 @@ function RecipeDetailsPage({
         throw new Error(payload?.detail || "Could not mark recipe as cooked.");
       }
 
+      const cookedRecipe = {
+        recipeId: source.id || recipe.id,
+        title: source.title || recipe.title,
+        image: source.image || recipe.imageUrl || "",
+        readyInMinutes: source.readyInMinutes || recipe.readyTime || null,
+        cuisines: source.cuisines || [],
+        dishTypes: source.dishTypes || [],
+        ingredients: ingredientNames,
+        cookedAt: new Date().toISOString(),
+      };
+
+      onCookedRecipe?.(cookedRecipe);
       setCelebrate(true);
       playSuccessChime();
-      setTimeout(() => setCelebrate(false), 1000);
+      onCooked?.({
+        pantryItems: mergeIngredientLists(
+          Array.isArray(payload.ingredients) ? payload.ingredients : [],
+          ingredientNames
+        ),
+        recentlyAdded: ingredientNames,
+        recipeTitle: source.title || recipe.title,
+      });
     } catch (error) {
       setCookError(error.message || "Could not mark recipe as cooked.");
     } finally {
@@ -1509,6 +1953,142 @@ function RecipeDetailsPage({
             ))}
           </ul>
 
+          <section className="guide-shell" aria-labelledby="cook-guide-heading">
+            <div className="guide-header">
+              <div>
+                <p className="guide-kicker">Cook guide</p>
+                <h3 id="cook-guide-heading">Cook one step at a time</h3>
+                <p className="sync-line">
+                  {guideSteps.length > 0
+                    ? `Guide mode split this recipe into ${guideSteps.length} focused steps.`
+                    : "This recipe does not have enough structured instructions for guide mode yet."}
+                </p>
+              </div>
+
+              {guideSteps.length > 0 ? (
+                <button
+                  type="button"
+                  className={`nav-btn ${guideMode ? "active" : ""}`}
+                  onClick={guideMode ? resetGuide : startGuide}
+                >
+                  {guideMode ? "Reset guide" : "Start guided cooking"}
+                </button>
+              ) : null}
+            </div>
+
+            {guideSteps.length > 0 ? (
+              <>
+                {guideMode ? (
+                  <>
+                    <div className="guide-progress-row">
+                      <span>
+                        Step {activeGuideStep + 1} of {guideSteps.length}
+                      </span>
+                      <span>{guideProgress}% through the guide</span>
+                    </div>
+
+                    <div
+                      className="guide-progress-track"
+                      aria-hidden="true"
+                    >
+                      <span style={{ width: `${guideProgress}%` }} />
+                    </div>
+
+                    {currentGuideStep ? (
+                      <div className="guide-stage-card">
+                        <span className="guide-step-badge">Now cooking</span>
+                        <p className="guide-current-step">
+                          {currentGuideStep.text}
+                        </p>
+
+                        {currentGuideStep.duration ? (
+                          <p className="guide-meta-line">
+                            Time: {currentGuideStep.duration}
+                          </p>
+                        ) : null}
+
+                        {currentGuideStep.ingredients.length > 0 ? (
+                          <p className="guide-meta-line">
+                            Use: {currentGuideStep.ingredients.join(", ")}
+                          </p>
+                        ) : null}
+
+                        {currentGuideStep.equipment.length > 0 ? (
+                          <p className="guide-meta-line">
+                            Tools: {currentGuideStep.equipment.join(", ")}
+                          </p>
+                        ) : null}
+                      </div>
+                    ) : null}
+
+                    <div className="guide-actions">
+                      <button
+                        type="button"
+                        className="secondary-btn"
+                        onClick={() =>
+                          setActiveGuideStep((current) =>
+                            Math.max(current - 1, 0)
+                          )
+                        }
+                        disabled={activeGuideStep === 0}
+                      >
+                        Previous
+                      </button>
+
+                      <button
+                        type="button"
+                        className="plan-btn"
+                        onClick={completeCurrentGuideStep}
+                      >
+                        {activeGuideStep === guideSteps.length - 1
+                          ? "Finish cooking steps"
+                          : "Done, next step"}
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  <div className="guide-preview-card">
+                    <p className="guide-preview-label">First step preview</p>
+                    <p className="guide-preview-text">{guideSteps[0].text}</p>
+                  </div>
+                )}
+
+                <ol className="guide-step-list">
+                  {guideSteps.map((step, index) => {
+                    const isActive = guideMode && index === activeGuideStep;
+                    const isComplete = completedGuideSteps.includes(index);
+
+                    return (
+                      <li
+                        key={`${step.number}-${step.text}`}
+                        className={`guide-step-item ${
+                          isActive ? "active" : ""
+                        } ${isComplete ? "complete" : ""}`}
+                      >
+                        <button
+                          type="button"
+                          className="guide-step-btn"
+                          onClick={() => goToGuideStep(index)}
+                          aria-current={isActive ? "step" : undefined}
+                        >
+                          <span className="guide-step-index">
+                            {step.number}
+                          </span>
+                          <span className="guide-step-copy">{step.text}</span>
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ol>
+              </>
+            ) : (
+              <p className="sync-line">
+                You can still follow the full instructions below and save the
+                ingredients to pantry after you finish.
+              </p>
+            )}
+          </section>
+
           <h3>Instructions</h3>
           {details.instructions ? (
             <div
@@ -1533,20 +2113,260 @@ function RecipeDetailsPage({
   );
 }
 
+function PantryPage({
+  userId,
+  initialPantryItems,
+  recentlyAdded,
+  recipeTitle,
+  lastCookedRecipe,
+  cookedRecipes,
+  onGoHome,
+}) {
+  const [pantryItems, setPantryItems] = useState(initialPantryItems || []);
+  const [loading, setLoading] = useState((initialPantryItems || []).length === 0);
+  const [error, setError] = useState("");
+  const recentItemKeys = useMemo(
+    () =>
+      new Set(
+        (recentlyAdded || [])
+          .map((item) => item?.trim().toLowerCase())
+          .filter(Boolean)
+      ),
+    [recentlyAdded]
+  );
+  const displayPantryItems = useMemo(
+    () => mergeIngredientLists(pantryItems, recentlyAdded || []),
+    [pantryItems, recentlyAdded]
+  );
+  const tasteProfile = useMemo(
+    () => analyzeCookedRecipes(cookedRecipes),
+    [cookedRecipes]
+  );
+  const recentCooked = useMemo(
+    () =>
+      (cookedRecipes || []).slice(0, 6).map((recipe) => ({
+        ...recipe,
+        cuisineTags: inferRecipeCuisines(recipe),
+      })),
+    [cookedRecipes]
+  );
+
+  useEffect(() => {
+    setPantryItems(Array.isArray(initialPantryItems) ? initialPantryItems : []);
+  }, [initialPantryItems]);
+
+  useEffect(() => {
+    if (!userId) {
+      setPantryItems([]);
+      setLoading(false);
+      return undefined;
+    }
+
+    let cancelled = false;
+
+    const loadPantry = async () => {
+      setLoading((initialPantryItems || []).length === 0);
+      setError("");
+
+      try {
+        const response = await fetch(
+          `${API_BASE_URL}/api/pantry/?userId=${encodeURIComponent(userId)}`
+        );
+        const payload = await response.json();
+
+        if (!response.ok) {
+          throw new Error(payload?.detail || "Could not load pantry.");
+        }
+
+        if (!cancelled) {
+          setPantryItems(
+            Array.isArray(payload.ingredients) ? payload.ingredients : []
+          );
+        }
+      } catch (requestError) {
+        if (!cancelled) {
+          setError(
+            formatRequestError(requestError, "Could not load pantry.")
+          );
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
+    };
+
+    loadPantry();
+    return () => {
+      cancelled = true;
+    };
+  }, [initialPantryItems, userId]);
+
+  const latestCook = lastCookedRecipe || recentCooked[0] || null;
+  const headline = recipeTitle || latestCook?.title || "Start cooking";
+  const pantryCountLabel = displayPantryItems.length === 1 ? "item" : "items";
+
+  return (
+    <>
+      <h2 className="section-title">Pantry</h2>
+      <p className="sync-line">Stock. Track. Repeat.</p>
+
+      <section className="card gradient-card pantry-dashboard-card pantry-sanctuary-card">
+        <div className="pantry-dashboard-top">
+          <div className="pantry-sanctuary-copy">
+            <p className="pantry-kicker">Kitchen scale</p>
+            <h3>{headline}</h3>
+            <p className="sync-line pantry-landing-copy">
+              {latestCook ? formatCookedDate(latestCook.cookedAt) : "Cook once to start."}
+            </p>
+          </div>
+
+          <button type="button" className="plan-btn" onClick={onGoHome}>
+            Cook
+          </button>
+        </div>
+
+        <div className="profile-stat-grid pantry-stat-grid">
+          <div className="profile-stat-tile">
+            <span className="profile-stat-label">Pantry</span>
+            <strong>{displayPantryItems.length}</strong>
+            <span className="pantry-count-label">{pantryCountLabel}</span>
+          </div>
+          <div className="profile-stat-tile">
+            <span className="profile-stat-label">Cooked</span>
+            <strong>{cookedRecipes.length}</strong>
+            <span className="pantry-count-label">recipes</span>
+          </div>
+          <div className="profile-stat-tile wide">
+            <span className="profile-stat-label">Favorite</span>
+            <strong>{tasteProfile.favoriteCuisine}</strong>
+          </div>
+        </div>
+
+        {(recentlyAdded || []).length > 0 ? (
+          <div className="pantry-highlight-band">
+            <p className="pantry-highlight-label">Just added</p>
+            <ul className="pantry-highlight-list">
+              {(recentlyAdded || []).map((item) => (
+                <li key={item} className="pantry-chip recent">
+                  {item}
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : displayPantryItems.length === 0 ? (
+          <p className="sync-line pantry-landing-copy">No items yet.</p>
+        ) : null}
+      </section>
+
+      <div className="profile-grid pantry-page-grid">
+        <section className="card gradient-card profile-card pantry-history-card">
+          <div className="profile-panel-top pantry-catalog-top">
+            <h3>Cooked</h3>
+            <span className="profile-inline-count">{cookedRecipes.length}</span>
+          </div>
+
+          {recentCooked.length > 0 ? (
+            <ul className="history-list">
+              {recentCooked.map((recipe) => (
+                <li key={`${recipe.recipeId}-${recipe.cookedAt}`} className="history-row">
+                  {recipe.image ? (
+                    <img
+                      src={recipe.image}
+                      alt={recipe.title}
+                      className="history-thumb"
+                    />
+                  ) : (
+                    <div className="history-thumb history-thumb-placeholder">
+                      {recipe.title.charAt(0).toUpperCase()}
+                    </div>
+                  )}
+
+                  <div className="history-copy">
+                    <p className="history-title">{recipe.title}</p>
+                    <p className="history-meta">
+                      {formatCookedDate(recipe.cookedAt)}
+                      {recipe.cuisineTags[0] ? ` • ${recipe.cuisineTags[0]}` : ""}
+                      {recipe.readyInMinutes ? ` • ${recipe.readyInMinutes} min` : ""}
+                    </p>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="sync-line">No dishes yet.</p>
+          )}
+        </section>
+
+        <section className="card gradient-card pantry-catalog-card">
+          <div className="pantry-catalog-top">
+            <h3>Pantry</h3>
+            <span className="profile-inline-count">{displayPantryItems.length}</span>
+          </div>
+
+          {error ? <p className="error-text">{error}</p> : null}
+          {loading && displayPantryItems.length === 0 ? (
+            <p className="sync-line">Loading pantry...</p>
+          ) : null}
+
+          {!loading && displayPantryItems.length === 0 ? (
+            <p className="sync-line">No items yet.</p>
+          ) : null}
+
+          {displayPantryItems.length > 0 ? (
+            <ul className="pantry-catalog-list">
+              {displayPantryItems.map((item) => (
+                <li
+                  key={item}
+                  className={`pantry-chip ${
+                    recentItemKeys.has(item.trim().toLowerCase()) ? "recent" : ""
+                  }`}
+                >
+                  <span>{item}</span>
+                </li>
+              ))}
+            </ul>
+          ) : null}
+        </section>
+      </div>
+    </>
+  );
+}
+
 function ProfilePage({
   userId,
   profile,
   setProfile,
   settings,
+  cookedRecipes,
+  onResetCooked,
   onSave,
   syncMessage,
   saving,
+  resettingCooked,
 }) {
   const [restrictions, setRestrictions] = useState([]);
   const [pantryItems, setPantryItems] = useState([]);
   const [recipeIdeas, setRecipeIdeas] = useState([]);
   const [ideasLoading, setIdeasLoading] = useState(false);
   const [ideasError, setIdeasError] = useState("");
+  const tasteProfile = useMemo(
+    () => analyzeCookedRecipes(cookedRecipes),
+    [cookedRecipes]
+  );
+  const recentCooked = useMemo(
+    () =>
+      (cookedRecipes || []).slice(0, 5).map((recipe) => ({
+        ...recipe,
+        cuisineTags: inferRecipeCuisines(recipe),
+      })),
+    [cookedRecipes]
+  );
+  const profileTitle = profile.name || "Your kitchen";
+  const profileInitial = (profile.name || profile.email || "J")
+    .trim()
+    .charAt(0)
+    .toUpperCase();
 
   useEffect(() => {
     fetch(`${API_BASE_URL}/api/dietary-restrictions`)
@@ -1645,13 +2465,153 @@ function ProfilePage({
     }));
   };
 
+  const handleResetCooked = async () => {
+    if (cookedRecipes.length === 0 || resettingCooked) return;
+
+    const confirmed = window.confirm(
+      "Clear your cooked history?"
+    );
+    if (!confirmed) return;
+
+    await onResetCooked?.();
+  };
+
   return (
     <>
-      <h2 className="section-title">Your Profile</h2>
+      <h2 className="section-title">Profile</h2>
       <p className="sync-line">{syncMessage}</p>
 
+      <section className="card gradient-card profile-card profile-hero-card">
+        <div className="profile-hero-top">
+          <div className="profile-identity-block">
+            <div className="profile-avatar">{profileInitial}</div>
+            <div>
+              <p className="profile-kicker">Identity</p>
+              <h3>{profileTitle}</h3>
+              <p className="sync-line">{profile.email || "Add your email"}</p>
+            </div>
+          </div>
+
+          <div className="profile-stat-grid">
+            <div className="profile-stat-tile">
+              <span className="profile-stat-label">Cooked</span>
+              <strong>{cookedRecipes.length}</strong>
+            </div>
+            <div className="profile-stat-tile">
+              <span className="profile-stat-label">Pantry</span>
+              <strong>{pantryItems.length}</strong>
+            </div>
+            <div className="profile-stat-tile wide">
+              <span className="profile-stat-label">Favorite cuisine</span>
+              <strong>{tasteProfile.favoriteCuisine}</strong>
+            </div>
+          </div>
+        </div>
+
+        <div className="taste-summary-row">
+          <div>
+            <p className="profile-kicker">Taste</p>
+            <h3>{tasteProfile.favoriteCuisine}</h3>
+            <p className="sync-line">{tasteProfile.note}</p>
+          </div>
+
+          {tasteProfile.breakdown.length > 0 ? (
+            <div className="taste-chip-row">
+              {tasteProfile.breakdown.map((item) => (
+                <span key={item.label} className="taste-chip">
+                  {item.label} {item.count}
+                </span>
+              ))}
+            </div>
+          ) : null}
+        </div>
+      </section>
+
+      <div className="profile-grid">
+        <section className="card gradient-card profile-card profile-history-card">
+          <div className="profile-panel-top">
+            <h3>Cooked</h3>
+            <div className="profile-panel-actions">
+              <span className="profile-inline-count">{cookedRecipes.length}</span>
+              <button
+                type="button"
+                className="secondary-btn"
+                onClick={handleResetCooked}
+                disabled={cookedRecipes.length === 0 || resettingCooked}
+              >
+                {resettingCooked ? "Resetting..." : "Reset"}
+              </button>
+            </div>
+          </div>
+
+          {recentCooked.length > 0 ? (
+            <ul className="history-list">
+              {recentCooked.map((recipe) => (
+                <li key={`${recipe.recipeId}-${recipe.cookedAt}`} className="history-row">
+                  {recipe.image ? (
+                    <img
+                      src={recipe.image}
+                      alt={recipe.title}
+                      className="history-thumb"
+                    />
+                  ) : (
+                    <div className="history-thumb history-thumb-placeholder">
+                      {recipe.title.charAt(0).toUpperCase()}
+                    </div>
+                  )}
+
+                  <div className="history-copy">
+                    <p className="history-title">{recipe.title}</p>
+                    <p className="history-meta">
+                      {formatCookedDate(recipe.cookedAt)}
+                      {recipe.cuisineTags[0] ? ` • ${recipe.cuisineTags[0]}` : ""}
+                    </p>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="sync-line">No dishes yet.</p>
+          )}
+        </section>
+
+        <section className="card gradient-card profile-card profile-card-compact">
+          <div className="profile-panel-top">
+            <h3>Next</h3>
+            <span className="profile-inline-count">{recipeIdeas.length}</span>
+          </div>
+
+          {ideasLoading ? <p className="sync-line">Finding ideas...</p> : null}
+          {ideasError ? <p className="error-text">{ideasError}</p> : null}
+
+          {!ideasLoading && !ideasError && pantryItems.length === 0 ? (
+            <p className="sync-line">Cook once to unlock this.</p>
+          ) : null}
+
+          {!ideasLoading && !ideasError && pantryItems.length > 0 ? (
+            recipeIdeas.length > 0 ? (
+              <ul className="profile-mini-list">
+                {recipeIdeas.slice(0, 4).map((recipe) => (
+                  <li key={recipe.recipeId} className="profile-mini-row">
+                    <span className="profile-mini-title">{recipe.recipeName}</span>
+                    <span className="profile-mini-meta">
+                      {recipe.readyInMinutes ?? "?"} min
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="sync-line">No matches yet.</p>
+            )
+          ) : null}
+        </section>
+      </div>
+
       <section className="card gradient-card profile-card">
-        <h3>Identity</h3>
+        <div className="profile-panel-top">
+          <h3>Profile notes</h3>
+        </div>
+
         <label htmlFor="name">Name</label>
         <input
           id="name"
@@ -1671,10 +2631,7 @@ function ProfilePage({
             setProfile((current) => ({ ...current, email: event.target.value }))
           }
         />
-      </section>
 
-      <section className="card gradient-card profile-card">
-        <h3>Dietary Preferences & Restrictions</h3>
         {restrictions.length === 0 ? (
           <p style={{ color: "var(--text-secondary)", fontSize: "0.9rem" }}>
             Loading...
@@ -1698,68 +2655,12 @@ function ProfilePage({
         )}
 
         <textarea
-          placeholder="Allergies or notes (e.g. no peanuts, lactose intolerant)"
+          placeholder="Notes"
           value={profile.notes || ""}
           onChange={(event) =>
             setProfile((current) => ({ ...current, notes: event.target.value }))
           }
         />
-      </section>
-
-      <section className="card gradient-card profile-card">
-        <h3>Your Pantry</h3>
-        <p className="sync-line">
-          {pantryItems.length > 0
-            ? "These saved ingredients shape your future recipe suggestions."
-            : "Cook a recipe on Home to start building your pantry automatically."}
-        </p>
-
-        {pantryItems.length > 0 ? (
-          <ul className="pantry-list">
-            {pantryItems.map((item) => (
-              <li key={item} className="pantry-chip">
-                <span>{item}</span>
-              </li>
-            ))}
-          </ul>
-        ) : null}
-      </section>
-
-      <section className="card gradient-card profile-card">
-        <h3>What To Cook Next</h3>
-        {ideasLoading ? (
-          <p className="sync-line">Finding recipes from your pantry...</p>
-        ) : null}
-
-        {ideasError ? <p className="error-text">{ideasError}</p> : null}
-
-        {!ideasLoading && !ideasError && pantryItems.length === 0 ? (
-          <p className="sync-line">
-            Your next recipe suggestions will appear here after you cook and
-            save ingredients to pantry.
-          </p>
-        ) : null}
-
-        {!ideasLoading && !ideasError && pantryItems.length > 0 ? (
-          <ul className="recipe-list">
-            {recipeIdeas.length > 0 ? (
-              recipeIdeas.map((recipe) => (
-                <li key={recipe.recipeId} className="recipe-card gradient-card">
-                  <p className="recipe-title">{recipe.recipeName}</p>
-                  <p className="recipe-meta">
-                    ⏱ {recipe.readyInMinutes ?? "?"} min • Uses{" "}
-                    {recipe.usedIngredientCount ?? 0} • Missing{" "}
-                    {recipe.missedIngredientCount ?? 0}
-                  </p>
-                </li>
-              ))
-            ) : (
-              <p className="sync-line">
-                No recipe ideas yet. Try cooking one recipe on Home first.
-              </p>
-            )}
-          </ul>
-        ) : null}
       </section>
 
       <button

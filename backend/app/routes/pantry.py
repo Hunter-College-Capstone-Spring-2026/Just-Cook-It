@@ -14,11 +14,12 @@ router = APIRouter(
     tags=["pantry"]
 )
 
+#Backend entry point to get pantry content for the user
 @router.get("/")
 def get_pantry(userId: str = Query(..., min_length=3)):
     return {"userId": userId, "ingredients": get_user_pantry(userId)}
 
-
+#Backend entry point to add ingredients to the user's pantry
 @router.post("/add")
 def add_to_pantry(payload: PantryAddRequest):
     if not payload.ingredients:
@@ -26,7 +27,7 @@ def add_to_pantry(payload: PantryAddRequest):
     ingredients = add_user_pantry_ingredients(payload.user_id, [item.name for item in payload.ingredients])
     return {"ok": True, "userId": payload.user_id, "ingredients": ingredients}
 
-
+#backend entry point to remove an ingredient from the user's pantry
 @router.delete("/remove")
 def remove_from_pantry(payload: PantryRemoveRequest):
     if not payload.ingredient_name.strip():

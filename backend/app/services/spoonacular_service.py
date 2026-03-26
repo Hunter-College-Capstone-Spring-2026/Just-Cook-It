@@ -188,5 +188,8 @@ def get_recipe_details_by_id(recipe_id: int):
         "image": data.get("image"),
         "readyInMinutes": data.get("readyInMinutes"),
         "extendedIngredients": data.get("extendedIngredients", []),
-        "instructions": data.get("instructions")
+        "instructions": data.get("instructions"),
+        "analyzedInstructions": data.get("analyzedInstructions", []),
+        "cuisines": data.get("cuisines", []),
+        "dishTypes": data.get("dishTypes", []),
     }

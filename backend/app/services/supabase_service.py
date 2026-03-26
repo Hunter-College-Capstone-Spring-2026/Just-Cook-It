@@ -23,6 +23,10 @@ def _safe_dict(value: Any) -> dict[str, Any]:
     return value if isinstance(value, dict) else {}
 
 
+def _safe_list(value: Any) -> list[Any]:
+    return value if isinstance(value, list) else []
+
+
 def _get_state_blob(state_row: dict[str, Any] | None) -> dict[str, Any]:
     # Different schema iterations stored app state under different JSON columns; accept any known shape.
     if not state_row:
@@ -32,6 +36,65 @@ def _get_state_blob(state_row: dict[str, Any] | None) -> dict[str, Any]:
         if isinstance(blob, dict):
             return blob
     return {}
+
+
+def _clean_string(value: Any) -> str:
+    return value.strip() if isinstance(value, str) else ""
+
+
+def _clean_string_list(values: Any) -> list[str]:
+    cleaned: list[str] = []
+    seen: set[str] = set()
+    for value in _safe_list(values):
+        item = _clean_string(value)
+        key = item.lower()
+        if not item or key in seen:
+            continue
+        seen.add(key)
+        cleaned.append(item)
+    return cleaned
+
+
+def _normalize_cooked_recipe(recipe: Any) -> dict[str, Any] | None:
+    if not isinstance(recipe, dict):
+        return None
+
+    recipe_id = recipe.get("recipeId", recipe.get("id"))
+    title = _clean_string(recipe.get("title", recipe.get("recipeName", "")))
+    if recipe_id in (None, "") or not title:
+        return None
+
+    try:
+        recipe_id = int(recipe_id)
+    except (TypeError, ValueError):
+        return None
+
+    ready_in_minutes = recipe.get("readyInMinutes")
+    try:
+        ready_in_minutes = int(ready_in_minutes) if ready_in_minutes is not None else None
+    except (TypeError, ValueError):
+        ready_in_minutes = None
+
+    return {
+        "recipeId": recipe_id,
+        "title": title,
+        "image": _clean_string(recipe.get("image", "")),
+        "readyInMinutes": ready_in_minutes,
+        "cuisines": _clean_string_list(recipe.get("cuisines", [])),
+        "dishTypes": _clean_string_list(recipe.get("dishTypes", [])),
+        "ingredients": _clean_string_list(recipe.get("ingredients", [])),
+        "cookedAt": _clean_string(recipe.get("cookedAt", "")),
+    }
+
+
+def _extract_cooked_recipes(state_blob: dict[str, Any]) -> list[dict[str, Any]]:
+    recipes = [
+        normalized
+        for recipe in _safe_list(state_blob.get("cookedRecipes", []))
+        if (normalized := _normalize_cooked_recipe(recipe))
+    ]
+    recipes.sort(key=lambda recipe: recipe.get("cookedAt", ""), reverse=True)
+    return recipes[:30]
 
 
 def get_dietary_restrictions():
@@ -68,7 +131,14 @@ def sign_out(jwt: str):
 
 def get_user_profile(user_id: str):
     # Profile data is split across the user table and the generic app-state blob, so we merge both sources here.
-    profile: dict[str, Any] = {"userId": user_id, "name": "", "email": "", "dietary": {}, "notes": ""}
+    profile: dict[str, Any] = {
+        "userId": user_id,
+        "name": "",
+        "email": "",
+        "dietary": {},
+        "notes": "",
+        "cookedRecipes": [],
+    }
 
     try:
         user_row = _safe_first(
@@ -90,6 +160,7 @@ def get_user_profile(user_id: str):
             {
                 "dietary": _safe_dict(state_profile.get("dietary", profile.get("dietary", {}))),
                 "notes": state_profile.get("notes", profile.get("notes", "")),
+                "cookedRecipes": _extract_cooked_recipes(state_blob),
             }
         )
     except Exception:
@@ -178,6 +249,67 @@ def save_user_settings(payload: dict[str, Any]):
     return {"saved": True, "warning": warning}
 
 
+def save_user_cooked_recipe(payload: dict[str, Any]):
+    user_id = payload.get("userId")
+    recipe = _normalize_cooked_recipe(payload.get("recipe"))
+    if not user_id:
+        return {"saved": False, "warning": "userId is required.", "recipes": []}
+    if not recipe:
+        return {"saved": False, "warning": "recipe is required.", "recipes": []}
+
+    warning = None
+    recipes: list[dict[str, Any]] = [recipe]
+
+    try:
+        current_state = _safe_first(
+            supabase.table(settings.supabase_state_table).select("*").eq("user_id", user_id).limit(1).execute().data
+        )
+        state_blob = _get_state_blob(current_state)
+        existing = _extract_cooked_recipes(state_blob)
+
+        deduped: dict[tuple[int, str], dict[str, Any]] = {}
+        for item in [recipe, *existing]:
+            key = (item["recipeId"], item.get("cookedAt", ""))
+            if key not in deduped:
+                deduped[key] = item
+
+        recipes = list(deduped.values())
+        recipes.sort(key=lambda item: item.get("cookedAt", ""), reverse=True)
+        recipes = recipes[:30]
+
+        state_blob["cookedRecipes"] = recipes
+        supabase.table(settings.supabase_state_table).upsert(
+            {"user_id": user_id, "state_json": state_blob},
+            on_conflict="user_id",
+        ).execute()
+    except Exception as exc:
+        warning = f"cooked recipe save skipped: {exc}"
+
+    return {"saved": True, "warning": warning, "recipes": recipes}
+
+
+def clear_user_cooked_recipes(user_id: str):
+    if not user_id:
+        return {"saved": False, "warning": "userId is required.", "recipes": []}
+
+    warning = None
+
+    try:
+        current_state = _safe_first(
+            supabase.table(settings.supabase_state_table).select("*").eq("user_id", user_id).limit(1).execute().data
+        )
+        state_blob = _get_state_blob(current_state)
+        state_blob["cookedRecipes"] = []
+        supabase.table(settings.supabase_state_table).upsert(
+            {"user_id": user_id, "state_json": state_blob},
+            on_conflict="user_id",
+        ).execute()
+    except Exception as exc:
+        warning = f"cooked recipe reset skipped: {exc}"
+
+    return {"saved": True, "warning": warning, "recipes": []}
+
+#Core data function to get the user's pantry items.
 def get_user_pantry(user_id: str):
     # Pantry data may arrive either as denormalized names on the join table or via ingredient IDs from older rows.
     names: list[str] = []
@@ -216,7 +348,7 @@ def get_user_pantry(user_id: str):
         unique_names.append(name.strip())
     return unique_names
 
-
+#Core data function to add pantry items for the user.
 def add_user_pantry_ingredients(user_id: str, ingredients: list[str]):
     # Write pantry items idempotently so retries and offline queue replays do not duplicate entries.
     normalized = [item.strip() for item in ingredients if item and item.strip()]
@@ -244,7 +376,7 @@ def add_user_pantry_ingredients(user_id: str, ingredients: list[str]):
 
     return get_user_pantry(user_id)
 
-
+#Core data function to remove a pantry item for the user. 
 def remove_user_pantry_ingredient(user_id: str, ingredient_name: str):
     normalized = ingredient_name.strip()
     if not normalized:
