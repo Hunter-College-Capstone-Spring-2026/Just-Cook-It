@@ -2,11 +2,12 @@ from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException, Query
 
-from app.models.ingredient import PantryAddRequest, PantryRemoveRequest
+from app.models.ingredient import PantryAddRequest, PantryRemoveRequest, CookRecipeRequest
 from app.services.supabase_service import (
     add_user_pantry_ingredients,
     get_user_pantry,
     remove_user_pantry_ingredient,
+    save_user_cooked_recipe,
 )
 
 router = APIRouter(
@@ -27,7 +28,41 @@ def add_to_pantry(payload: PantryAddRequest):
     ingredients = add_user_pantry_ingredients(payload.user_id, [item.name for item in payload.ingredients])
     return {"ok": True, "userId": payload.user_id, "ingredients": ingredients}
 
-#backend entry point to remove an ingredient from the user's pantry
+
+@router.post("/cook")
+def cook_recipe(payload: CookRecipeRequest):
+    """
+    Mark a recipe as cooked.
+    - Adds the recipe's ingredients to the user's pantry.
+    - Records the cooked event on the UserRecipe row (sets user_recipe_cooked_at).
+    Both happen in one request so there is no partial state.
+    """
+    if not payload.ingredients:
+        raise HTTPException(status_code=400, detail="ingredients cannot be empty")
+
+    # 1. Add ingredients to pantry
+    updated_pantry = add_user_pantry_ingredients(
+        payload.user_id,
+        [item.name for item in payload.ingredients],
+    )
+
+    # 2. Record cooked on UserRecipe (best-effort — never blocks the pantry update)
+    cooked_warning: str | None = None
+    if payload.recipe:
+        result = save_user_cooked_recipe({
+            "userId": payload.user_id,
+            "recipe": payload.recipe.model_dump(),
+        })
+        cooked_warning = result.get("warning")
+
+    return {
+        "ok": True,
+        "userId": payload.user_id,
+        "ingredients": updated_pantry,
+        "cookedWarning": cooked_warning,
+    }
+
+
 @router.delete("/remove")
 def remove_from_pantry(payload: PantryRemoveRequest):
     if not payload.ingredient_name.strip():
