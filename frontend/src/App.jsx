@@ -1033,9 +1033,9 @@ function HomePage({
           className="initial-search-panel gradient-card"
           aria-label="Search by ingredients or query"
         >
-          <h3 className="initial-search-title">Cook from what you have</h3>
+          <h3 className="initial-search-title">Search Recipes</h3>
           <p className="search-subtitle">
-            Search with ingredients, your pantry, natural language, or any combination.
+            Search with ingredients, your pantry, meal name, or any combination.
           </p>
 
           {!online ? (
