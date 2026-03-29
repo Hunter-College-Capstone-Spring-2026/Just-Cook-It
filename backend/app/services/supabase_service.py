@@ -5,6 +5,7 @@ from typing import Any
 from supabase import create_client
 
 from app.utils.config import settings
+from datetime import datetime, timezone
 
 supabase_anon = create_client(settings.supabase_url, settings.supabase_anon_key)
 service_supabase = create_client(
@@ -12,6 +13,8 @@ service_supabase = create_client(
     settings.supabase_service_role_key or settings.supabase_anon_key,
 )
 
+def _now() -> str:
+    return datetime.now(timezone.utc).isoformat()
 
 def get_supabase():
     return service_supabase
@@ -101,6 +104,120 @@ def _normalize_cooked_recipe(recipe: Any) -> dict[str, Any] | None:
         "ingredients": _clean_string_list(recipe.get("ingredients", [])),
         "cookedAt": _clean_string(recipe.get("cookedAt", "")),
     }
+
+'''
+ToDo:
+fix clearing cooked recipe bug:Cleared with warning: cooked recipe reset skipped: {'message': "Could not find the table 'public.UserAppState' in the schema cache", 'code': 'PGRST205', 'hint': "Perhaps you meant the table 'public.UserRecipe'", 'details': None}
+'''
+
+def _upsert_recipe(recipe: dict[str, Any]) -> bool:
+    """
+    Ensure the Recipe row exists before we write a UserRecipe FK.
+    Uses ON CONFLICT DO NOTHING so duplicate inserts are safe.
+    May need to tweak to make sure dupes dont exist
+    """
+    try:
+        supabase.table(settings.supabase_recipe_table).upsert(
+            {
+                "recipe_id": recipe["recipeId"],
+                "recipe_name": recipe.get("title", ""),
+                "recipe_image_url": recipe.get("image", ""),
+                "recipe_ready_time": recipe.get("readyInMinutes"),
+            },
+            on_conflict="recipe_id",
+        ).execute()
+        return True
+    except Exception:
+        return False
+    
+
+# ── saved recipes ─────────────────────────────────────────────────────────────
+
+def toggle_saved_recipe(user_id: str, recipe: dict[str, Any]) -> dict[str, Any]:
+    """
+    Bookmark / un-bookmark a recipe.
+    - If no UserRecipe row exists → insert with saved_at = now()
+    - If row exists and saved_at is set → clear saved_at (un-bookmark)
+    - If row exists and saved_at is null → set saved_at = now()
+    Returns {"saved": bool, "warning": str | None}
+    """
+    recipe_id = recipe.get("recipeId")
+    if not recipe_id or not user_id:
+        return {"saved": False, "warning": "userId and recipeId are required."}
+
+    if not _upsert_recipe(recipe):
+        return {"saved": False, "warning": "Could not upsert recipe row."}
+
+    warning = None
+    is_saved = False
+    try:
+        existing = _safe_first(
+            supabase.table(settings.supabase_user_recipe_table)
+            .select("user_recipe_id,user_recipe_saved_at")
+            .eq("user_id", user_id)
+            .eq("recipe_id", recipe_id)
+            .limit(1)
+            .execute()
+            .data
+        )
+
+        if existing is None:
+            # No row yet — create it as saved
+            supabase.table(settings.supabase_user_recipe_table).insert({
+                "user_id": user_id,
+                "recipe_id": recipe_id,
+                "user_recipe_saved_at": _now(),
+            }).execute()
+            is_saved = True
+        elif existing.get("user_recipe_saved_at"):
+            # Already saved — un-bookmark
+            supabase.table(settings.supabase_user_recipe_table).update(
+                {"user_recipe_saved_at": None}
+            ).eq("user_recipe_id", existing["user_recipe_id"]).execute()
+            is_saved = False
+        else:
+            # Row exists but was un-bookmarked — re-bookmark
+            supabase.table(settings.supabase_user_recipe_table).update(
+                {"user_recipe_saved_at": _now()}
+            ).eq("user_recipe_id", existing["user_recipe_id"]).execute()
+            is_saved = True
+
+    except Exception as exc:
+        warning = f"toggle save failed: {exc}"
+
+    return {"saved": is_saved, "warning": warning}
+
+
+def get_user_saved_recipes(user_id: str) -> list[dict[str, Any]]:
+    """
+    Returns all recipes the user has bookmarked (saved_at IS NOT NULL),
+    joined with Recipe metadata — no extra Spoonacular calls needed.
+    """
+    try:
+        rows = (
+            supabase.table(settings.supabase_user_recipe_table)
+            .select("user_recipe_saved_at, recipe:recipe_id(recipe_id, recipe_name, recipe_image_url, recipe_ready_time)")
+            .eq("user_id", user_id)
+            .not_.is_("user_recipe_saved_at", "null")
+            .order("user_recipe_saved_at", desc=True)
+            .execute()
+            .data
+            or []
+        )
+    except Exception:
+        return []
+
+    result = []
+    for row in rows:
+        r = row.get("recipe") or {}
+        result.append({
+            "recipeId": r.get("recipe_id"),
+            "title": r.get("recipe_name"),
+            "image": r.get("recipe_image_url"),
+            "readyInMinutes": r.get("recipe_ready_time"),
+            "savedAt": row.get("user_recipe_saved_at"),
+        })
+    return result
 
 
 def _extract_cooked_recipes(state_blob: dict[str, Any]) -> list[dict[str, Any]]:
@@ -330,32 +447,52 @@ def save_user_cooked_recipe(payload: dict[str, Any]):
         return {"saved": False, "warning": "recipe is required.", "recipes": []}
 
     warning = None
-    recipes: list[dict[str, Any]] = [recipe]
 
+    try:
+        _upsert_recipe(recipe)
+        existing = _safe_first(
+            supabase.table(settings.supabase_user_recipe_table)
+            .select("user_recipe_id")
+            .eq("user_id", user_id)
+            .eq("recipe_id", recipe["recipeId"])
+            .limit(1)
+            .execute()
+            .data
+        )
+        if existing:
+            supabase.table(settings.supabase_user_recipe_table).update(
+                {"user_recipe_cooked_at": recipe.get("cookedAt") or _now()}
+            ).eq("user_recipe_id", existing["user_recipe_id"]).execute()
+        else:
+            supabase.table(settings.supabase_user_recipe_table).insert({
+                "user_id": user_id,
+                "recipe_id": recipe["recipeId"],
+                "user_recipe_cooked_at": recipe.get("cookedAt") or _now(),
+            }).execute()
+    except Exception as exc:
+        warning = f"UserRecipe write skipped: {exc}"
+
+    #  Legacy state blob (keep until frontend migrates) ─── should be done at this point but check again to be sure
+    recipes: list[dict[str, Any]] = [recipe]
     try:
         current_state = _safe_first(
             supabase.table(settings.supabase_state_table).select("*").eq("user_id", user_id).limit(1).execute().data
         )
         state_blob = _get_state_blob(current_state)
-        existing = _extract_cooked_recipes(state_blob)
-
+        existing_list = _extract_cooked_recipes(state_blob)
         deduped: dict[tuple[int, str], dict[str, Any]] = {}
-        for item in [recipe, *existing]:
+        for item in [recipe, *existing_list]:
             key = (item["recipeId"], item.get("cookedAt", ""))
             if key not in deduped:
                 deduped[key] = item
-
-        recipes = list(deduped.values())
-        recipes.sort(key=lambda item: item.get("cookedAt", ""), reverse=True)
-        recipes = recipes[:30]
-
+        recipes = sorted(deduped.values(), key=lambda x: x.get("cookedAt", ""), reverse=True)[:30]
         state_blob["cookedRecipes"] = recipes
         supabase.table(settings.supabase_state_table).upsert(
-            {"user_id": user_id, "state_json": state_blob},
-            on_conflict="user_id",
+            {"user_id": user_id, "state_json": state_blob}, on_conflict="user_id"
         ).execute()
     except Exception as exc:
-        warning = f"cooked recipe save skipped: {exc}"
+        w2 = f"state blob write skipped: {exc}"
+        warning = f"{warning}; {w2}" if warning else w2
 
     return {"saved": True, "warning": warning, "recipes": recipes}
 
@@ -363,22 +500,13 @@ def save_user_cooked_recipe(payload: dict[str, Any]):
 def clear_user_cooked_recipes(user_id: str):
     if not user_id:
         return {"saved": False, "warning": "userId is required.", "recipes": []}
-
     warning = None
-
     try:
-        current_state = _safe_first(
-            supabase.table(settings.supabase_state_table).select("*").eq("user_id", user_id).limit(1).execute().data
-        )
-        state_blob = _get_state_blob(current_state)
-        state_blob["cookedRecipes"] = []
-        supabase.table(settings.supabase_state_table).upsert(
-            {"user_id": user_id, "state_json": state_blob},
-            on_conflict="user_id",
-        ).execute()
+        supabase.table(settings.supabase_user_recipe_table).update(
+            {"user_recipe_cooked_at": None}
+        ).eq("user_id", user_id).execute()
     except Exception as exc:
         warning = f"cooked recipe reset skipped: {exc}"
-
     return {"saved": True, "warning": warning, "recipes": []}
 
 #Core data function to get the user's pantry items.
@@ -441,9 +569,14 @@ def add_user_pantry_ingredients(user_id: str, ingredients: list[str]):
             if existing:
                 continue
             supabase.table(settings.supabase_user_ingredient_table).insert(
-                {"user_id": user_id, "ingredient_name": name}
+                {"user_id": user_id, 
+                 "ingredient_name": name,
+                 "user_ingredient_quantity": 1, 
+                 "user_ingredient_unit": ""  
+                }
             ).execute()
-        except Exception:
+        except Exception as e:
+            print(f"[pantry insert error] {e}")
             continue
 
     return get_user_pantry(user_id)

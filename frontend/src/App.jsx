@@ -117,11 +117,11 @@ function buildGuideSteps(recipeDetails) {
       text: step?.step?.trim() || "",
       ingredients: mergeIngredientLists(
         [],
-        (step?.ingredients || []).map((item) => item?.name || "")
+        (step?.ingredients || []).map((item) => item?.name || ""),
       ),
       equipment: mergeIngredientLists(
         [],
-        (step?.equipment || []).map((item) => item?.name || "")
+        (step?.equipment || []).map((item) => item?.name || ""),
       ),
       duration:
         step?.length?.number && step?.length?.unit
@@ -132,13 +132,15 @@ function buildGuideSteps(recipeDetails) {
 
   if (analyzedSteps.length > 0) return analyzedSteps;
 
-  return extractInstructionBlocks(recipeDetails?.instructions).map((text, index) => ({
-    number: index + 1,
-    text,
-    ingredients: [],
-    equipment: [],
-    duration: "",
-  }));
+  return extractInstructionBlocks(recipeDetails?.instructions).map(
+    (text, index) => ({
+      number: index + 1,
+      text,
+      ingredients: [],
+      equipment: [],
+      duration: "",
+    }),
+  );
 }
 
 const CUISINE_KEYWORDS = {
@@ -213,7 +215,7 @@ function mergeCookedRecipes(base, incoming) {
   return Array.from(deduped.values())
     .sort(
       (left, right) =>
-        new Date(right.cookedAt).getTime() - new Date(left.cookedAt).getTime()
+        new Date(right.cookedAt).getTime() - new Date(left.cookedAt).getTime(),
     )
     .slice(0, 30);
 }
@@ -231,7 +233,9 @@ function inferRecipeCuisines(recipe) {
     .toLowerCase();
 
   return Object.entries(CUISINE_KEYWORDS)
-    .filter(([, keywords]) => keywords.some((keyword) => haystack.includes(keyword)))
+    .filter(([, keywords]) =>
+      keywords.some((keyword) => haystack.includes(keyword)),
+    )
     .map(([cuisine]) => cuisine);
 }
 
@@ -260,7 +264,9 @@ function analyzeCookedRecipes(recipes) {
   const [first, second] = breakdown;
   return {
     favoriteCuisine: first.label,
-    note: second ? `${first.label} leads. ${second.label} next.` : `${first.label} leads.`,
+    note: second
+      ? `${first.label} leads. ${second.label} next.`
+      : `${first.label} leads.`,
     breakdown,
   };
 }
@@ -332,12 +338,12 @@ function App() {
   const [profile, setProfile] = useLocalStorage("jci_profile", defaultProfile);
   const [settings, setSettings] = useLocalStorage(
     "jci_settings",
-    defaultSettings
+    defaultSettings,
   );
   const [selectedRecipe, setSelectedRecipe] = useState(null);
   const [cookedRecipes, setCookedRecipes] = useLocalStorage(
     `jci_cooked_recipes_${authUser?.userId || "guest"}`,
-    []
+    [],
   );
   const [pantryLanding, setPantryLanding] = useState({
     pantryItems: [],
@@ -346,16 +352,16 @@ function App() {
   });
   const [savedRecipeIds, setSavedRecipeIds] = useLocalStorage(
     "jci_saved_recipes",
-    []
+    [],
   );
 
   const userId = authUser?.userId || null;
 
   const [profileSyncMessage, setProfileSyncMessage] = useState(
-    "Profile stored locally."
+    "Profile stored locally.",
   );
   const [settingsSyncMessage, setSettingsSyncMessage] = useState(
-    "Settings stored locally."
+    "Settings stored locally.",
   );
   const [savingProfile, setSavingProfile] = useState(false);
   const [savingSettings, setSavingSettings] = useState(false);
@@ -402,16 +408,15 @@ function App() {
 
     const loadRemoteState = async () => {
       try {
-        const [profileResp, settingsResp] = await Promise.all([
+        const [profileResp, settingsResp, savedResp] = await Promise.all([
           fetch(
-            `${API_BASE_URL}/api/users/profile?userId=${encodeURIComponent(
-              userId
-            )}`
+            `${API_BASE_URL}/api/users/profile?userId=${encodeURIComponent(userId)}`,
           ),
           fetch(
-            `${API_BASE_URL}/api/users/settings?userId=${encodeURIComponent(
-              userId
-            )}`
+            `${API_BASE_URL}/api/users/settings?userId=${encodeURIComponent(userId)}`,
+          ),
+          fetch(
+            `${API_BASE_URL}/recipes/saved?userId=${encodeURIComponent(userId)}`,
           ),
         ]);
 
@@ -425,14 +430,14 @@ function App() {
             setProfile((current) => mergeProfile(current, profileFields));
             if (Array.isArray(remoteCookedRecipes)) {
               setCookedRecipes((current) =>
-                mergeCookedRecipes(current, remoteCookedRecipes)
+                mergeCookedRecipes(current, remoteCookedRecipes),
               );
             }
             setProfileSyncMessage("Profile synced with Supabase.");
           }
         } else if (isMounted) {
           setProfileSyncMessage(
-            "Using local profile (Supabase profile sync unavailable)."
+            "Using local profile (Supabase profile sync unavailable).",
           );
         }
 
@@ -444,16 +449,27 @@ function App() {
           }
         } else if (isMounted) {
           setSettingsSyncMessage(
-            "Using local settings (Supabase settings sync unavailable)."
+            "Using local settings (Supabase settings sync unavailable).",
           );
+        }
+
+        if (savedResp.ok) {
+          const savedPayload = await savedResp.json();
+          if (isMounted && Array.isArray(savedPayload.recipes)) {
+            setSavedRecipeIds(
+              savedPayload.recipes
+                .map((r) => Number(r.recipeId))
+                .filter(Boolean),
+            );
+          }
         }
       } catch {
         if (isMounted) {
           setProfileSyncMessage(
-            "Using local profile (could not reach backend)."
+            "Using local profile (could not reach backend).",
           );
           setSettingsSyncMessage(
-            "Using local settings (could not reach backend)."
+            "Using local settings (could not reach backend).",
           );
         }
       }
@@ -479,7 +495,7 @@ function App() {
       setProfileSyncMessage(
         payload.warning
           ? `Saved with warning: ${payload.warning}`
-          : "Profile saved to Supabase."
+          : "Profile saved to Supabase.",
       );
     } catch (error) {
       setProfileSyncMessage(error.message || "Profile saved locally only.");
@@ -502,7 +518,7 @@ function App() {
       setSettingsSyncMessage(
         payload.warning
           ? `Saved with warning: ${payload.warning}`
-          : "Settings saved to Supabase."
+          : "Settings saved to Supabase.",
       );
     } catch (error) {
       setSettingsSyncMessage(error.message || "Settings saved locally only.");
@@ -545,33 +561,13 @@ function App() {
     }
   };
 
+  // Updates local cooked-recipe history only.
+  // The DB write (UserRecipe.user_recipe_cooked_at) happens inside
+  // POST /api/pantry/cook so there is no duplicate backend call here.
   const recordCookedRecipe = (recipeEntry) => {
     const normalized = normalizeCookedRecipe(recipeEntry);
     if (!normalized) return;
-
     setCookedRecipes((current) => mergeCookedRecipes(current, [normalized]));
-
-    if (!userId) return;
-
-    void fetch(`${API_BASE_URL}/api/users/cooked-recipes`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        userId,
-        recipe: normalized,
-      }),
-    })
-      .then(async (response) => {
-        const payload = await response.json().catch(() => ({}));
-        if (response.ok && Array.isArray(payload.recipes)) {
-          setCookedRecipes((current) =>
-            mergeCookedRecipes(current, payload.recipes)
-          );
-        }
-      })
-      .catch(() => {
-        // keep local history when backend sync is unavailable
-      });
   };
 
   const resetCookedRecipes = async () => {
@@ -583,9 +579,9 @@ function App() {
     try {
       const response = await fetch(
         `${API_BASE_URL}/api/users/cooked-recipes?userId=${encodeURIComponent(
-          userId
+          userId,
         )}`,
-        { method: "DELETE" }
+        { method: "DELETE" },
       );
       const payload = await response.json();
 
@@ -602,13 +598,51 @@ function App() {
       setProfileSyncMessage(
         payload.warning
           ? `Cleared with warning: ${payload.warning}`
-          : "Cooked history cleared."
+          : "Cooked history cleared.",
       );
     } catch (error) {
       setCookedRecipes(previousCookedRecipes);
       setProfileSyncMessage(error.message || "Could not clear cooked history.");
     } finally {
       setResettingCookedHistory(false);
+    }
+  };
+
+  const toggleSavedRecipe = async (recipe) => {
+    const recipeId = Number(recipe.id ?? recipe.recipeId);
+    if (!recipeId) return;
+
+    // optimistic update
+    setSavedRecipeIds((current) =>
+      current.includes(recipeId)
+        ? current.filter((id) => id !== recipeId)
+        : [...current, recipeId],
+    );
+
+    if (!userId) return;
+    try {
+      await fetch(`${API_BASE_URL}/recipes/save`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          user_id: userId,
+          recipe: {
+            recipeId,
+            title: recipe.title ?? recipe.recipeName ?? "",
+            image: recipe.image ?? recipe.imageUrl ?? "",
+            readyInMinutes: recipe.readyInMinutes ?? recipe.readyTime ?? null,
+            cuisines: recipe.cuisines ?? [],
+            dishTypes: recipe.dishTypes ?? [],
+          },
+        }),
+      });
+    } catch {
+      // rollback on failure
+      setSavedRecipeIds((current) =>
+        current.includes(recipeId)
+          ? current.filter((id) => id !== recipeId)
+          : [...current, recipeId],
+      );
     }
   };
 
@@ -723,7 +757,7 @@ function App() {
                   userId={userId}
                   onOpenRecipe={(recipe) => setSelectedRecipe(recipe)}
                   savedRecipeIds={savedRecipeIds}
-                  setSavedRecipeIds={setSavedRecipeIds}
+                  onToggleSaved={toggleSavedRecipe}
                 />
               </div>
 
@@ -744,7 +778,7 @@ function App() {
                     });
                   }}
                   savedRecipeIds={savedRecipeIds}
-                  setSavedRecipeIds={setSavedRecipeIds}
+                  onToggleSaved={toggleSavedRecipe}
                 />
               ) : null}
             </>
@@ -801,8 +835,8 @@ function App() {
           >
             {item.label}
           </button>
-          ))}
-        </nav>
+        ))}
+      </nav>
     </div>
   );
 }
@@ -838,10 +872,7 @@ function SignInPage({ onSuccess, onGoToSignUp }) {
       });
     } catch (err) {
       setError(
-        formatRequestError(
-          err,
-          "Could not sign in. Check your credentials."
-        )
+        formatRequestError(err, "Could not sign in. Check your credentials."),
       );
     } finally {
       setLoading(false);
@@ -1059,7 +1090,7 @@ function HomePage({
   userId,
   onOpenRecipe,
   savedRecipeIds,
-  setSavedRecipeIds,
+  onToggleSaved,
 }) {
   const [inputValue, setInputValue] = useState("");
   const [manualIngredients, setManualIngredients] = useState([]);
@@ -1074,14 +1105,14 @@ function HomePage({
   const [recipes, setRecipes] = useState([]);
   const [, setPantryItems] = useLocalStorage(
     `jci_pantry_${userId || "guest"}`,
-    []
+    [],
   );
   const [online, setOnline] = useState(
-    typeof navigator !== "undefined" ? navigator.onLine : true
+    typeof navigator !== "undefined" ? navigator.onLine : true,
   );
   const [queuedPantryAdds, setQueuedPantryAdds] = useLocalStorage(
     "jci_queued_pantry_adds",
-    []
+    [],
   );
 
   const welcomeText = "Welcome!";
@@ -1115,13 +1146,13 @@ function HomePage({
     const loadPantry = async () => {
       try {
         const response = await fetch(
-          `${API_BASE_URL}/api/pantry/?userId=${encodeURIComponent(userId)}`
+          `${API_BASE_URL}/api/pantry/?userId=${encodeURIComponent(userId)}`,
         );
         if (!response.ok) return;
         const payload = await response.json();
         if (!cancelled && Array.isArray(payload.ingredients)) {
           setPantryItems((current) =>
-            mergeIngredientLists(current, payload.ingredients)
+            mergeIngredientLists(current, payload.ingredients),
           );
         }
       } catch {
@@ -1178,7 +1209,7 @@ function HomePage({
             const payload = await response.json();
             if (!cancelled && Array.isArray(payload.ingredients)) {
               setPantryItems((current) =>
-                mergeIngredientLists(current, payload.ingredients)
+                mergeIngredientLists(current, payload.ingredients),
               );
             }
           }
@@ -1199,13 +1230,13 @@ function HomePage({
     const interval = setInterval(async () => {
       try {
         const response = await fetch(
-          `${API_BASE_URL}/api/pantry/?userId=${encodeURIComponent(userId)}`
+          `${API_BASE_URL}/api/pantry/?userId=${encodeURIComponent(userId)}`,
         );
         if (!response.ok) return;
         const payload = await response.json();
         if (Array.isArray(payload.ingredients)) {
           setPantryItems((current) =>
-            mergeIngredientLists(current, payload.ingredients)
+            mergeIngredientLists(current, payload.ingredients),
           );
         }
       } catch {
@@ -1230,13 +1261,13 @@ function HomePage({
 
   const renderRecipeMatchSummary = (recipe) => {
     const totalConsidered =
-      (recipe.usedIngredientCount || 0) +
-      (recipe.missedIngredientCount || 0);
+      (recipe.usedIngredientCount || 0) + (recipe.missedIngredientCount || 0);
 
     if (!hasIngredientDrivenSearch) {
       return (
         <p className="ingredient-summary">
-          <strong>Ingredients </strong>{"("}
+          <strong>Ingredients </strong>
+          {"("}
           {recipe.allIngredients.length || 0}
           {recipe.allIngredients.length
             ? `): ${recipe.allIngredients.join(", ")}`
@@ -1249,7 +1280,8 @@ function HomePage({
       return (
         <p className="ingredient-summary">
           <strong>
-            Using {recipe.usedIngredientCount} out of {totalConsidered} ingredients:
+            Using {recipe.usedIngredientCount} out of {totalConsidered}{" "}
+            ingredients:
           </strong>{" "}
           {recipe.usedIngredients.length
             ? recipe.usedIngredients.join(", ")
@@ -1261,20 +1293,13 @@ function HomePage({
     return (
       <p className="ingredient-summary">
         <strong>
-          Missing {recipe.missedIngredientCount} out of {totalConsidered} ingredients:
+          Missing {recipe.missedIngredientCount} out of {totalConsidered}{" "}
+          ingredients:
         </strong>{" "}
         {recipe.missedIngredients.length
           ? recipe.missedIngredients.join(", ")
           : "None"}
       </p>
-    );
-  };
-
-  const toggleSavedRecipe = (recipeId) => {
-    setSavedRecipeIds((current) =>
-      current.includes(recipeId)
-        ? current.filter((id) => id !== recipeId)
-        : [...current, recipeId]
     );
   };
 
@@ -1294,7 +1319,7 @@ function HomePage({
     setApiError("");
     if (draftIngredients.length > 0) {
       setManualIngredients((current) =>
-        mergeIngredientLists(current, draftIngredients)
+        mergeIngredientLists(current, draftIngredients),
       );
       setInputValue("");
     }
@@ -1321,7 +1346,7 @@ function HomePage({
       }
 
       const response = await fetch(
-        `${API_BASE_URL}/recipes/search?${query.toString()}`
+        `${API_BASE_URL}/recipes/search?${query.toString()}`,
       );
       const payload = await response.json();
 
@@ -1329,7 +1354,7 @@ function HomePage({
         throw new Error(
           payload?.error?.message ||
             payload?.detail ||
-            "Unable to fetch recipe ideas right now."
+            "Unable to fetch recipe ideas right now.",
         );
       }
 
@@ -1348,7 +1373,7 @@ function HomePage({
       setRecipes(mappedRecipes);
     } catch (requestError) {
       setApiError(
-        formatRequestError(requestError, "Could not connect to backend API.")
+        formatRequestError(requestError, "Could not connect to backend API."),
       );
       setRecipes([]);
     } finally {
@@ -1367,7 +1392,9 @@ function HomePage({
 
   const removeManualIngredient = (ingredientName) => {
     setManualIngredients((current) =>
-      current.filter((item) => item.toLowerCase() !== ingredientName.toLowerCase())
+      current.filter(
+        (item) => item.toLowerCase() !== ingredientName.toLowerCase(),
+      ),
     );
   };
 
@@ -1399,7 +1426,11 @@ function HomePage({
       <section className="home-hero-card card gradient-card">
         <div className="home-hero-copy">
           <p className="home-kicker">Home</p>
-          <h2 id="welcome" className="welcome-text welcome-text-home" aria-label="Welcome">
+          <h2
+            id="welcome"
+            className="welcome-text welcome-text-home"
+            aria-label="Welcome"
+          >
             {characters.slice(0, visibleChars).map((char, index) => (
               <span
                 key={`${char}-${index}`}
@@ -1409,7 +1440,9 @@ function HomePage({
               </span>
             ))}
           </h2>
-          <p className="home-hero-title">Cook with what is already in your kitchen.</p>
+          <p className="home-hero-title">
+            Cook with what is already in your kitchen.
+          </p>
           <p className="search-subtitle home-search-subtitle">
             Add ingredients or describe the meal you want.
           </p>
@@ -1437,9 +1470,7 @@ function HomePage({
           aria-label="Search by ingredients or query"
         >
           <h3 className="initial-search-title">Start with ingredients</h3>
-          <p className="search-subtitle">
-            Build a quick list, then search.
-          </p>
+          <p className="search-subtitle">Build a quick list, then search.</p>
 
           {!online ? (
             <p className="sync-line">
@@ -1638,7 +1669,7 @@ function HomePage({
                       className={`save-icon-btn ${
                         savedRecipeIds.includes(recipe.id) ? "saved" : ""
                       }`}
-                      onClick={() => toggleSavedRecipe(recipe.id)}
+                      onClick={() => onToggleSaved(recipe)}
                       aria-label={
                         savedRecipeIds.includes(recipe.id)
                           ? "Unsave recipe"
@@ -1684,7 +1715,7 @@ function RecipeDetailsPage({
   onCookedRecipe,
   onCooked,
   savedRecipeIds,
-  setSavedRecipeIds,
+  onToggleSaved,
 }) {
   const [details, setDetails] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -1709,7 +1740,7 @@ function RecipeDetailsPage({
 
       try {
         const response = await fetch(
-          `${API_BASE_URL}/recipes/api/spoonacular/recipes/${recipe.id}`
+          `${API_BASE_URL}/recipes/api/spoonacular/recipes/${recipe.id}`,
         );
         const payload = await response.json();
 
@@ -1751,11 +1782,7 @@ function RecipeDetailsPage({
   }, [celebrate]);
 
   const toggleSavedRecipe = () => {
-    setSavedRecipeIds((current) =>
-      current.includes(recipe.id)
-        ? current.filter((id) => id !== recipe.id)
-        : [...current, recipe.id]
-    );
+    onToggleSaved(details || recipe);
   };
 
   const playSuccessChime = () => {
@@ -1773,7 +1800,7 @@ function RecipeDetailsPage({
       oscillator.start();
       oscillator.frequency.exponentialRampToValueAtTime(
         990,
-        ctx.currentTime + 0.22
+        ctx.currentTime + 0.22,
       );
       gainNode.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.24);
       oscillator.stop(ctx.currentTime + 0.24);
@@ -1803,7 +1830,7 @@ function RecipeDetailsPage({
     setCompletedGuideSteps((current) =>
       current.includes(activeGuideStep)
         ? current
-        : [...current, activeGuideStep].sort((left, right) => left - right)
+        : [...current, activeGuideStep].sort((left, right) => left - right),
     );
 
     if (activeGuideStep < guideSteps.length - 1) {
@@ -1818,8 +1845,8 @@ function RecipeDetailsPage({
         (source.extendedIngredients || [])
           .map((item) => item?.name || item?.originalName || item?.original)
           .filter(Boolean)
-          .map((item) => item.trim())
-      )
+          .map((item) => item.trim()),
+      ),
     );
 
     if (ingredientNames.length === 0) {
@@ -1830,13 +1857,24 @@ function RecipeDetailsPage({
     setCooking(true);
     setCookError("");
 
+    const cookedAt = new Date().toISOString();
+
     try {
-      const response = await fetch(`${API_BASE_URL}/api/pantry/add`, {
+      const response = await fetch(`${API_BASE_URL}/api/pantry/cook`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           user_id: userId,
           ingredients: ingredientNames.map((name) => ({ name })),
+          recipe: {
+            recipeId: source.id || recipe.id,
+            title: source.title || recipe.title,
+            image: source.image || recipe.imageUrl || "",
+            readyInMinutes: source.readyInMinutes || recipe.readyTime || null,
+            cuisines: source.cuisines || [],
+            dishTypes: source.dishTypes || [],
+            cookedAt,
+          },
         }),
       });
 
@@ -1854,7 +1892,7 @@ function RecipeDetailsPage({
         cuisines: source.cuisines || [],
         dishTypes: source.dishTypes || [],
         ingredients: ingredientNames,
-        cookedAt: new Date().toISOString(),
+        cookedAt,
       };
 
       onCookedRecipe?.(cookedRecipe);
@@ -1863,7 +1901,7 @@ function RecipeDetailsPage({
       onCooked?.({
         pantryItems: mergeIngredientLists(
           Array.isArray(payload.ingredients) ? payload.ingredients : [],
-          ingredientNames
+          ingredientNames,
         ),
         recentlyAdded: ingredientNames,
         recipeTitle: source.title || recipe.title,
@@ -1987,10 +2025,7 @@ function RecipeDetailsPage({
                       <span>{guideProgress}% through the guide</span>
                     </div>
 
-                    <div
-                      className="guide-progress-track"
-                      aria-hidden="true"
-                    >
+                    <div className="guide-progress-track" aria-hidden="true">
                       <span style={{ width: `${guideProgress}%` }} />
                     </div>
 
@@ -2027,7 +2062,7 @@ function RecipeDetailsPage({
                         className="secondary-btn"
                         onClick={() =>
                           setActiveGuideStep((current) =>
-                            Math.max(current - 1, 0)
+                            Math.max(current - 1, 0),
                           )
                         }
                         disabled={activeGuideStep === 0}
@@ -2096,7 +2131,9 @@ function RecipeDetailsPage({
               dangerouslySetInnerHTML={{ __html: details.instructions }}
             />
           ) : (
-            <p className="sync-line">No instructions available for this recipe.</p>
+            <p className="sync-line">
+              No instructions available for this recipe.
+            </p>
           )}
 
           <button
@@ -2123,24 +2160,26 @@ function PantryPage({
   onGoHome,
 }) {
   const [pantryItems, setPantryItems] = useState(initialPantryItems || []);
-  const [loading, setLoading] = useState((initialPantryItems || []).length === 0);
+  const [loading, setLoading] = useState(
+    (initialPantryItems || []).length === 0,
+  );
   const [error, setError] = useState("");
   const recentItemKeys = useMemo(
     () =>
       new Set(
         (recentlyAdded || [])
           .map((item) => item?.trim().toLowerCase())
-          .filter(Boolean)
+          .filter(Boolean),
       ),
-    [recentlyAdded]
+    [recentlyAdded],
   );
   const displayPantryItems = useMemo(
     () => mergeIngredientLists(pantryItems, recentlyAdded || []),
-    [pantryItems, recentlyAdded]
+    [pantryItems, recentlyAdded],
   );
   const tasteProfile = useMemo(
     () => analyzeCookedRecipes(cookedRecipes),
-    [cookedRecipes]
+    [cookedRecipes],
   );
   const recentCooked = useMemo(
     () =>
@@ -2148,7 +2187,7 @@ function PantryPage({
         ...recipe,
         cuisineTags: inferRecipeCuisines(recipe),
       })),
-    [cookedRecipes]
+    [cookedRecipes],
   );
 
   useEffect(() => {
@@ -2170,7 +2209,7 @@ function PantryPage({
 
       try {
         const response = await fetch(
-          `${API_BASE_URL}/api/pantry/?userId=${encodeURIComponent(userId)}`
+          `${API_BASE_URL}/api/pantry/?userId=${encodeURIComponent(userId)}`,
         );
         const payload = await response.json();
 
@@ -2180,14 +2219,12 @@ function PantryPage({
 
         if (!cancelled) {
           setPantryItems(
-            Array.isArray(payload.ingredients) ? payload.ingredients : []
+            Array.isArray(payload.ingredients) ? payload.ingredients : [],
           );
         }
       } catch (requestError) {
         if (!cancelled) {
-          setError(
-            formatRequestError(requestError, "Could not load pantry.")
-          );
+          setError(formatRequestError(requestError, "Could not load pantry."));
         }
       } finally {
         if (!cancelled) {
@@ -2217,7 +2254,9 @@ function PantryPage({
             <p className="pantry-kicker">Kitchen scale</p>
             <h3>{headline}</h3>
             <p className="sync-line pantry-landing-copy">
-              {latestCook ? formatCookedDate(latestCook.cookedAt) : "Cook once to start."}
+              {latestCook
+                ? formatCookedDate(latestCook.cookedAt)
+                : "Cook once to start."}
             </p>
           </div>
 
@@ -2269,7 +2308,10 @@ function PantryPage({
           {recentCooked.length > 0 ? (
             <ul className="history-list">
               {recentCooked.map((recipe) => (
-                <li key={`${recipe.recipeId}-${recipe.cookedAt}`} className="history-row">
+                <li
+                  key={`${recipe.recipeId}-${recipe.cookedAt}`}
+                  className="history-row"
+                >
                   {recipe.image ? (
                     <img
                       src={recipe.image}
@@ -2286,8 +2328,12 @@ function PantryPage({
                     <p className="history-title">{recipe.title}</p>
                     <p className="history-meta">
                       {formatCookedDate(recipe.cookedAt)}
-                      {recipe.cuisineTags[0] ? ` • ${recipe.cuisineTags[0]}` : ""}
-                      {recipe.readyInMinutes ? ` • ${recipe.readyInMinutes} min` : ""}
+                      {recipe.cuisineTags[0]
+                        ? ` • ${recipe.cuisineTags[0]}`
+                        : ""}
+                      {recipe.readyInMinutes
+                        ? ` • ${recipe.readyInMinutes} min`
+                        : ""}
                     </p>
                   </div>
                 </li>
@@ -2301,7 +2347,9 @@ function PantryPage({
         <section className="card gradient-card pantry-catalog-card">
           <div className="pantry-catalog-top">
             <h3>Pantry</h3>
-            <span className="profile-inline-count">{displayPantryItems.length}</span>
+            <span className="profile-inline-count">
+              {displayPantryItems.length}
+            </span>
           </div>
 
           {error ? <p className="error-text">{error}</p> : null}
@@ -2319,7 +2367,9 @@ function PantryPage({
                 <li
                   key={item}
                   className={`pantry-chip ${
-                    recentItemKeys.has(item.trim().toLowerCase()) ? "recent" : ""
+                    recentItemKeys.has(item.trim().toLowerCase())
+                      ? "recent"
+                      : ""
                   }`}
                 >
                   <span>{item}</span>
@@ -2352,7 +2402,7 @@ function ProfilePage({
   const [ideasError, setIdeasError] = useState("");
   const tasteProfile = useMemo(
     () => analyzeCookedRecipes(cookedRecipes),
-    [cookedRecipes]
+    [cookedRecipes],
   );
   const recentCooked = useMemo(
     () =>
@@ -2360,7 +2410,7 @@ function ProfilePage({
         ...recipe,
         cuisineTags: inferRecipeCuisines(recipe),
       })),
-    [cookedRecipes]
+    [cookedRecipes],
   );
   const profileTitle = profile.name || "Your kitchen";
   const profileInitial = (profile.name || profile.email || "J")
@@ -2380,13 +2430,13 @@ function ProfilePage({
     const loadPantry = async () => {
       try {
         const response = await fetch(
-          `${API_BASE_URL}/api/pantry/?userId=${encodeURIComponent(userId)}`
+          `${API_BASE_URL}/api/pantry/?userId=${encodeURIComponent(userId)}`,
         );
         if (!response.ok) return;
         const payload = await response.json();
         if (!cancelled) {
           setPantryItems(
-            Array.isArray(payload.ingredients) ? payload.ingredients : []
+            Array.isArray(payload.ingredients) ? payload.ingredients : [],
           );
         }
       } catch {
@@ -2424,7 +2474,7 @@ function ProfilePage({
         }
 
         const response = await fetch(
-          `${API_BASE_URL}/recipes/search?${query.toString()}`
+          `${API_BASE_URL}/recipes/search?${query.toString()}`,
         );
 
         const payload = await response.json();
@@ -2433,7 +2483,7 @@ function ProfilePage({
           throw new Error(
             payload?.error?.message ||
               payload?.detail ||
-              "Could not load recipe ideas."
+              "Could not load recipe ideas.",
           );
         }
 
@@ -2444,7 +2494,7 @@ function ProfilePage({
         if (!cancelled) {
           setRecipeIdeas([]);
           setIdeasError(
-            formatRequestError(error, "Could not load recipe ideas.")
+            formatRequestError(error, "Could not load recipe ideas."),
           );
         }
       } finally {
@@ -2468,9 +2518,7 @@ function ProfilePage({
   const handleResetCooked = async () => {
     if (cookedRecipes.length === 0 || resettingCooked) return;
 
-    const confirmed = window.confirm(
-      "Clear your cooked history?"
-    );
+    const confirmed = window.confirm("Clear your cooked history?");
     if (!confirmed) return;
 
     await onResetCooked?.();
@@ -2532,7 +2580,9 @@ function ProfilePage({
           <div className="profile-panel-top">
             <h3>Cooked</h3>
             <div className="profile-panel-actions">
-              <span className="profile-inline-count">{cookedRecipes.length}</span>
+              <span className="profile-inline-count">
+                {cookedRecipes.length}
+              </span>
               <button
                 type="button"
                 className="secondary-btn"
@@ -2547,7 +2597,10 @@ function ProfilePage({
           {recentCooked.length > 0 ? (
             <ul className="history-list">
               {recentCooked.map((recipe) => (
-                <li key={`${recipe.recipeId}-${recipe.cookedAt}`} className="history-row">
+                <li
+                  key={`${recipe.recipeId}-${recipe.cookedAt}`}
+                  className="history-row"
+                >
                   {recipe.image ? (
                     <img
                       src={recipe.image}
@@ -2564,7 +2617,9 @@ function ProfilePage({
                     <p className="history-title">{recipe.title}</p>
                     <p className="history-meta">
                       {formatCookedDate(recipe.cookedAt)}
-                      {recipe.cuisineTags[0] ? ` • ${recipe.cuisineTags[0]}` : ""}
+                      {recipe.cuisineTags[0]
+                        ? ` • ${recipe.cuisineTags[0]}`
+                        : ""}
                     </p>
                   </div>
                 </li>
@@ -2593,7 +2648,9 @@ function ProfilePage({
               <ul className="profile-mini-list">
                 {recipeIdeas.slice(0, 4).map((recipe) => (
                   <li key={recipe.recipeId} className="profile-mini-row">
-                    <span className="profile-mini-title">{recipe.recipeName}</span>
+                    <span className="profile-mini-title">
+                      {recipe.recipeName}
+                    </span>
                     <span className="profile-mini-meta">
                       {recipe.readyInMinutes ?? "?"} min
                     </span>
@@ -2800,7 +2857,7 @@ function CursorAura() {
 
   useEffect(() => {
     const prefersReducedMotion = window.matchMedia(
-      "(prefers-reduced-motion: reduce)"
+      "(prefers-reduced-motion: reduce)",
     ).matches;
     const finePointer = window.matchMedia("(pointer: fine)").matches;
     if (prefersReducedMotion || !finePointer) return;

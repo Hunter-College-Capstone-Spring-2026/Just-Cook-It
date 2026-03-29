@@ -1,6 +1,8 @@
 from fastapi import APIRouter, Query, HTTPException
 import requests
 from app.utils.config import settings
+from app.models.ingredient import SaveRecipeRequest
+from app.services.supabase_service import toggle_saved_recipe, get_user_saved_recipes
 
 from app.services.spoonacular_service import (
     search_recipes_complex,
@@ -57,3 +59,13 @@ def search_by_ingredients(
 @router.get("/api/spoonacular/recipes/{recipe_id}")
 def get_recipe_details(recipe_id: int):
     return get_recipe_details_by_id(recipe_id)
+
+
+@router.post("/save")
+def save_recipe(payload: SaveRecipeRequest):
+    result = toggle_saved_recipe(payload.user_id, payload.recipe.model_dump())
+    return {"ok": True, **result}
+
+@router.get("/saved")
+def get_saved_recipes(userId: str = Query(..., min_length=3)):
+    return {"userId": userId, "recipes": get_user_saved_recipes(userId)}
