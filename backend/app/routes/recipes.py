@@ -5,6 +5,7 @@ from app.models.ingredient import SaveRecipeRequest
 from app.services.supabase_service import toggle_saved_recipe, get_user_saved_recipes
 
 from app.services.spoonacular_service import (
+    get_personalized_recipe_suggestion,
     search_recipes_complex,
     search_recipes_by_ingredients,
     get_recipe_details_by_id
@@ -37,6 +38,21 @@ def search_recipes_endpoint(
         ranking=ranking,
         ignore_pantry=ignorePantry,
         max_ready_time=maxTime
+    )
+
+
+@router.get("/suggestion")
+def get_recipe_suggestion_endpoint(
+    userId: str = Query(..., min_length=3),
+    maxTime: int | None = Query(None, ge=1, le=300),
+    excludeRecipeId: int | None = Query(None, ge=1),
+    suggestionIndex: int | None = Query(None, ge=0),
+):
+    return get_personalized_recipe_suggestion(
+        user_id=userId,
+        max_ready_time=maxTime,
+        exclude_recipe_id=excludeRecipeId,
+        suggestion_index=suggestionIndex,
     )
 
 

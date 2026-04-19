@@ -1103,6 +1103,10 @@ function HomePage({
   const [loading, setLoading] = useState(false);
   const [apiError, setApiError] = useState("");
   const [recipes, setRecipes] = useState([]);
+  const [dailySuggestion, setDailySuggestion] = useState(null);
+  const [suggestionIndex, setSuggestionIndex] = useState(0);
+  const [suggestionLoading, setSuggestionLoading] = useState(false);
+  const [suggestionError, setSuggestionError] = useState("");
   const [, setPantryItems] = useLocalStorage(
     `jci_pantry_${userId || "guest"}`,
     [],
@@ -1119,6 +1123,26 @@ function HomePage({
   const characters = useMemo(() => welcomeText.split(""), [welcomeText]);
   const resultCount = settings.quickRecipes ? 5 : 10;
   const ignorePantry = true;
+  const suggestionCacheKey = `jci_daily_suggestion_${userId || "guest"}`;
+
+  const toDayKey = () =>
+    new Date().toLocaleDateString("en-CA", {
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    });
+
+  const mapRecipeFromApi = (recipe) => ({
+    id: recipe.recipeId,
+    title: recipe.recipeName,
+    imageUrl: recipe.recipeImageUrl,
+    readyTime: recipe.readyInMinutes,
+    usedIngredientCount: recipe.usedIngredientCount,
+    missedIngredientCount: recipe.missedIngredientCount,
+    missedIngredients: recipe.missedIngredients || [],
+    usedIngredients: recipe.usedIngredients || [],
+    allIngredients: recipe.allIngredients || [],
+  });
 
   useEffect(() => {
     const startDelay = 400;
@@ -1246,6 +1270,110 @@ function HomePage({
     return () => clearInterval(interval);
   }, [online, userId, setPantryItems]);
 
+  const loadDailySuggestion = async ({ forceRefresh = false } = {}) => {
+    if (!userId) return;
+
+    const today = toDayKey();
+    let cachedCurrentIndex = 0;
+    if (!forceRefresh) {
+      try {
+        const cachedRaw = window.localStorage.getItem(suggestionCacheKey);
+        if (cachedRaw) {
+          const cached = JSON.parse(cachedRaw);
+          if (
+            cached?.date === today &&
+            Object.prototype.hasOwnProperty.call(cached, "suggestion")
+          ) {
+            setDailySuggestion(cached.suggestion || null);
+            setSuggestionIndex(
+              Number.isFinite(Number(cached?.currentIndex))
+                ? Number(cached.currentIndex)
+                : 0,
+            );
+            setSuggestionError("");
+            return;
+          }
+        }
+      } catch {
+        // ignore cache parse failures
+      }
+    }
+
+    setSuggestionLoading(true);
+    setSuggestionError("");
+
+    try {
+      if (forceRefresh) {
+        cachedCurrentIndex = suggestionIndex;
+      } else {
+        try {
+          const cachedRaw = window.localStorage.getItem(suggestionCacheKey);
+          if (cachedRaw) {
+            const cached = JSON.parse(cachedRaw);
+            cachedCurrentIndex = Number.isFinite(Number(cached?.currentIndex))
+              ? Number(cached.currentIndex)
+              : 0;
+          }
+        } catch {
+          cachedCurrentIndex = 0;
+        }
+      }
+
+      const query = new URLSearchParams({ userId });
+      const nextIndex = forceRefresh ? cachedCurrentIndex + 1 : 0;
+      if (forceRefresh) {
+        query.set("suggestionIndex", String(nextIndex));
+      }
+      if (forceRefresh && dailySuggestion?.id) {
+        query.set("excludeRecipeId", String(dailySuggestion.id));
+      }
+      const response = await fetch(
+        `${API_BASE_URL}/recipes/suggestion?${query.toString()}`,
+      );
+      const payload = await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          payload?.error?.message ||
+            payload?.detail ||
+            "Could not load your daily suggestion.",
+        );
+      }
+
+      const mappedSuggestion = payload?.suggestion
+        ? mapRecipeFromApi(payload.suggestion)
+        : null;
+      setDailySuggestion(mappedSuggestion);
+      setSuggestionIndex(nextIndex);
+
+      window.localStorage.setItem(
+        suggestionCacheKey,
+        JSON.stringify({
+          date: today,
+          suggestion: mappedSuggestion,
+          currentIndex: nextIndex,
+        }),
+      );
+    } catch (requestError) {
+      setSuggestionError(
+        formatRequestError(
+          requestError,
+          "Could not load your daily suggestion right now.",
+        ),
+      );
+      setDailySuggestion(null);
+      if (!forceRefresh) {
+        setSuggestionIndex(0);
+      }
+    } finally {
+      setSuggestionLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadDailySuggestion();
+  }, [userId]);
+
   const parseIngredientDraft = (value) =>
     value
       .split(/[,\n]/)
@@ -1358,17 +1486,7 @@ function HomePage({
         );
       }
 
-      const mappedRecipes = (payload.results || []).map((recipe) => ({
-        id: recipe.recipeId,
-        title: recipe.recipeName,
-        imageUrl: recipe.recipeImageUrl,
-        readyTime: recipe.readyInMinutes,
-        usedIngredientCount: recipe.usedIngredientCount,
-        missedIngredientCount: recipe.missedIngredientCount,
-        missedIngredients: recipe.missedIngredients || [],
-        usedIngredients: recipe.usedIngredients || [],
-        allIngredients: recipe.allIngredients || [],
-      }));
+      const mappedRecipes = (payload.results || []).map(mapRecipeFromApi);
 
       setRecipes(mappedRecipes);
     } catch (requestError) {
@@ -1458,6 +1576,98 @@ function HomePage({
           <div className="home-hero-art-glow" />
           <CookingPanIcon className="home-pan-icon" />
         </div>
+      </section>
+
+      <section className="card gradient-card daily-suggestion-panel">
+        <div className="daily-suggestion-head">
+          <div>
+            <p className="home-kicker">Daily suggested recipe</p>
+            <p className="search-subtitle">
+              Personalized from your pantry and saved profile restrictions.
+            </p>
+          </div>
+          <button
+            type="button"
+            className="clear-btn"
+            onClick={() => loadDailySuggestion({ forceRefresh: true })}
+            disabled={suggestionLoading}
+          >
+            {suggestionLoading ? "Generating..." : "Generate new suggestion"}
+          </button>
+        </div>
+
+        {suggestionError ? <p className="error-text">{suggestionError}</p> : null}
+
+        {!suggestionLoading && !dailySuggestion && !suggestionError ? (
+          <p className="sync-line">No suggestion available right now.</p>
+        ) : null}
+
+        {dailySuggestion ? (
+          <ul className="recipe-list">
+            <li className="recipe-card gradient-card recipe-card-layout">
+              <div className="recipe-result-image-wrap">
+                {dailySuggestion.imageUrl ? (
+                  <img
+                    src={dailySuggestion.imageUrl}
+                    alt={dailySuggestion.title}
+                    className="recipe-result-image"
+                  />
+                ) : (
+                  <div className="recipe-result-image recipe-result-image-placeholder">
+                    No image
+                  </div>
+                )}
+              </div>
+
+              <div className="recipe-result-content">
+                <div className="recipe-card-top">
+                  <button
+                    type="button"
+                    className={`save-icon-btn ${
+                      savedRecipeIds.includes(dailySuggestion.id) ? "saved" : ""
+                    }`}
+                    onClick={() => onToggleSaved(dailySuggestion)}
+                    aria-label={
+                      savedRecipeIds.includes(dailySuggestion.id)
+                        ? "Unsave recipe"
+                        : "Save recipe"
+                    }
+                    title={
+                      savedRecipeIds.includes(dailySuggestion.id)
+                        ? "Unsave recipe"
+                        : "Save recipe"
+                    }
+                  >
+                    {savedRecipeIds.includes(dailySuggestion.id) ? "♥" : "♡"}
+                  </button>
+                </div>
+
+                <p className="recipe-title">{dailySuggestion.title}</p>
+                <p className="recipe-meta">
+                  ⏱ {dailySuggestion.readyTime ?? "?"} min
+                </p>
+
+                <p className="ingredient-summary">
+                  <strong>
+                    Missing {dailySuggestion.missedIngredientCount || 0}
+                  </strong>{" "}
+                  ingredient(s):{" "}
+                  {dailySuggestion.missedIngredients?.length
+                    ? dailySuggestion.missedIngredients.join(", ")
+                    : "None"}
+                </p>
+
+                <button
+                  type="button"
+                  className="plan-btn"
+                  onClick={() => onOpenRecipe(dailySuggestion)}
+                >
+                  Check it out!
+                </button>
+              </div>
+            </li>
+          </ul>
+        ) : null}
       </section>
 
       <section
@@ -2160,6 +2370,10 @@ function PantryPage({
   onGoHome,
 }) {
   const [pantryItems, setPantryItems] = useState(initialPantryItems || []);
+  const [addDraft, setAddDraft] = useState("");
+  const [adding, setAdding] = useState(false);
+  const [addError, setAddError] = useState("");
+  const [manualRecentlyAdded, setManualRecentlyAdded] = useState([]);
   const [loading, setLoading] = useState(
     (initialPantryItems || []).length === 0,
   );
@@ -2167,11 +2381,11 @@ function PantryPage({
   const recentItemKeys = useMemo(
     () =>
       new Set(
-        (recentlyAdded || [])
+        mergeIngredientLists(recentlyAdded || [], manualRecentlyAdded)
           .map((item) => item?.trim().toLowerCase())
           .filter(Boolean),
       ),
-    [recentlyAdded],
+    [recentlyAdded, manualRecentlyAdded],
   );
   const displayPantryItems = useMemo(
     () => mergeIngredientLists(pantryItems, recentlyAdded || []),
@@ -2197,6 +2411,7 @@ function PantryPage({
   useEffect(() => {
     if (!userId) {
       setPantryItems([]);
+      setManualRecentlyAdded([]);
       setLoading(false);
       return undefined;
     }
@@ -2242,6 +2457,54 @@ function PantryPage({
   const latestCook = lastCookedRecipe || recentCooked[0] || null;
   const headline = recipeTitle || latestCook?.title || "Start cooking";
   const pantryCountLabel = displayPantryItems.length === 1 ? "item" : "items";
+  const parsePantryDraft = (value) =>
+    value
+      .split(/[,\n]/)
+      .map((item) => item.trim())
+      .filter(Boolean);
+
+  const addPantryItems = async () => {
+    const nextItems = parsePantryDraft(addDraft);
+    if (nextItems.length === 0) {
+      setAddError("Enter at least one ingredient.");
+      return;
+    }
+
+    setAdding(true);
+    setAddError("");
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/pantry/add`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          user_id: userId,
+          ingredients: nextItems.map((name) => ({ name })),
+        }),
+      });
+      const payload = await response.json();
+
+      if (!response.ok) {
+        throw new Error(payload?.detail || "Could not add pantry items.");
+      }
+
+      setPantryItems((current) =>
+        Array.isArray(payload.ingredients)
+          ? payload.ingredients
+          : mergeIngredientLists(current, nextItems),
+      );
+      setManualRecentlyAdded((current) =>
+        mergeIngredientLists(current, nextItems),
+      );
+      setAddDraft("");
+    } catch (requestError) {
+      setAddError(
+        formatRequestError(requestError, "Could not add pantry items."),
+      );
+    } finally {
+      setAdding(false);
+    }
+  };
 
   return (
     <>
@@ -2350,6 +2613,35 @@ function PantryPage({
             <span className="profile-inline-count">
               {displayPantryItems.length}
             </span>
+          </div>
+
+          <div className="pantry-add-panel">
+            <label htmlFor="pantryAddInput">Add pantry items</label>
+            <div className="pantry-add-row">
+              <input
+                id="pantryAddInput"
+                type="text"
+                placeholder="milk, garlic, spinach"
+                value={addDraft}
+                onChange={(event) => setAddDraft(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    event.preventDefault();
+                    addPantryItems();
+                  }
+                }}
+              />
+              <button
+                type="button"
+                className="secondary-btn pantry-add-btn"
+                onClick={addPantryItems}
+                disabled={adding}
+              >
+                {adding ? "Adding..." : "Add"}
+              </button>
+            </div>
+            <p className="field-hint">Use commas to add multiple ingredients.</p>
+            {addError ? <p className="error-text pantry-add-error">{addError}</p> : null}
           </div>
 
           {error ? <p className="error-text">{error}</p> : null}

@@ -554,6 +554,15 @@ def add_user_pantry_ingredients(user_id: str, ingredients: list[str]):
     normalized = [item.strip() for item in ingredients if item and item.strip()]
     if not normalized:
         return []
+    # normalized changes
+    pantry_before = {
+        item.strip().lower()
+        for item in get_user_pantry(user_id)
+        if isinstance(item, str) and item.strip()
+    }
+    requested = {item.lower() for item in normalized}
+    missing_before = requested - pantry_before
+    insert_errors: list[str] = []
 
     for name in normalized:
         try:
@@ -577,9 +586,22 @@ def add_user_pantry_ingredients(user_id: str, ingredients: list[str]):
             ).execute()
         except Exception as e:
             print(f"[pantry insert error] {e}")
+            insert_errors.append(str(e))
             continue
 
-    return get_user_pantry(user_id)
+    updated_pantry = get_user_pantry(user_id)
+    pantry_after = {
+        item.strip().lower()
+        for item in updated_pantry
+        if isinstance(item, str) and item.strip()
+    }
+    still_missing = missing_before - pantry_after
+    if still_missing and insert_errors:
+        raise RuntimeError(
+            "Could not add pantry ingredients. Supabase blocked write (likely RLS policy or missing service role key)."
+        )
+
+    return updated_pantry
 
 #Core data function to remove a pantry item for the user. 
 def remove_user_pantry_ingredient(user_id: str, ingredient_name: str):
@@ -614,4 +636,3 @@ def remove_user_pantry_ingredient(user_id: str, ingredient_name: str):
         pass
 
     return get_user_pantry(user_id)
-

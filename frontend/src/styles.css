@@ -801,6 +801,32 @@ button:focus-visible {
   margin-bottom: 0.85rem;
 }
 
+.pantry-add-panel {
+  display: grid;
+  gap: 0.5rem;
+  margin-bottom: 0.85rem;
+}
+
+.pantry-add-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.pantry-add-row input {
+  margin: 0;
+}
+
+.pantry-add-btn {
+  width: auto;
+  margin: 0;
+  white-space: nowrap;
+}
+
+.pantry-add-error {
+  margin-top: 0;
+}
+
 .pantry-page-grid {
   grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.95fr);
 }
@@ -1734,6 +1760,11 @@ button:focus-visible {
     flex-direction: column;
   }
 
+  .pantry-add-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
   .pantry-highlight-list,
   .pantry-catalog-list,
   .pantry-list {
@@ -1799,6 +1830,18 @@ button:focus-visible {
   justify-content: flex-end;
 }
 
+.daily-suggestion-panel {
+  margin-top: -0.2rem;
+}
+
+.daily-suggestion-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+  margin-bottom: 0.8rem;
+}
+
 .recipe-card-layout {
   display: grid;
   grid-template-columns: 120px 1fr;
@@ -1835,4 +1878,11 @@ button:focus-visible {
 
 .recipe-result-content .plan-btn {
   margin-top: 0.65rem;
+}
+
+@media (max-width: 720px) {
+  .daily-suggestion-head {
+    flex-direction: column;
+    align-items: stretch;
+  }
 }

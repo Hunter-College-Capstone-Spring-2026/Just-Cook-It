@@ -25,7 +25,10 @@ def get_pantry(userId: str = Query(..., min_length=3)):
 def add_to_pantry(payload: PantryAddRequest):
     if not payload.ingredients:
         raise HTTPException(status_code=400, detail="ingredients cannot be empty")
-    ingredients = add_user_pantry_ingredients(payload.user_id, [item.name for item in payload.ingredients])
+    try:
+        ingredients = add_user_pantry_ingredients(payload.user_id, [item.name for item in payload.ingredients])
+    except RuntimeError as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
     return {"ok": True, "userId": payload.user_id, "ingredients": ingredients}
 
 
@@ -41,10 +44,13 @@ def cook_recipe(payload: CookRecipeRequest):
         raise HTTPException(status_code=400, detail="ingredients cannot be empty")
 
     # 1. Add ingredients to pantry
-    updated_pantry = add_user_pantry_ingredients(
-        payload.user_id,
-        [item.name for item in payload.ingredients],
-    )
+    try:
+        updated_pantry = add_user_pantry_ingredients(
+            payload.user_id,
+            [item.name for item in payload.ingredients],
+        )
+    except RuntimeError as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
 
     # 2. Record cooked on UserRecipe (best-effort — never blocks the pantry update)
     cooked_warning: str | None = None
