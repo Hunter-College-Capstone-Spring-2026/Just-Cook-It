@@ -1120,6 +1120,65 @@ function HomePage({
   const resultCount = settings.quickRecipes ? 5 : 10;
   const ignorePantry = true;
 
+  // SUGGESTED RECIPE STUFF
+  const [dailySuggestion, setDailySuggestion] = useState(null);
+  const [suggestionLoading, setSuggestionLoading] = useState(false);
+  const [suggestionError, setSuggestionError] = useState("");
+  //-----
+
+  const suggestionStorageKey = `jci_daily_suggestion_${userId}`;
+  const suggestionDateKey = `jci_daily_suggestion_date_${userId}`;
+
+  const fetchDailySuggestion = async ({ forceRefresh = false } = {}) => {
+    const today = new Date().toISOString().slice(0, 10);
+
+    if (!forceRefresh) {
+      try {
+        const cachedDate = window.localStorage.getItem(suggestionDateKey);
+        const cachedSuggestion = window.localStorage.getItem(suggestionStorageKey);
+
+        if (cachedDate === today && cachedSuggestion) {
+          setDailySuggestion(JSON.parse(cachedSuggestion));
+          return;
+        }
+      } catch {
+        // ignore bad cache
+      }
+    }
+
+    setSuggestionLoading(true);
+    setSuggestionError("");
+
+    try {
+      const response = await fetch(
+        `${API_BASE_URL}/recipes/suggestion?userId=${encodeURIComponent(userId)}`
+      );
+      const payload = await response.json();
+
+      if (!response.ok) {
+        throw new Error(payload?.detail || "Could not load daily suggestion.");
+      }
+
+      const suggestion = payload?.suggestion || null;
+      setDailySuggestion(suggestion);
+
+      if (suggestion) {
+        window.localStorage.setItem(suggestionStorageKey, JSON.stringify(suggestion));
+        window.localStorage.setItem(suggestionDateKey, today);
+      }
+    } catch (error) {
+      setSuggestionError(error?.message || "Could not load daily suggestion.");
+    } finally {
+      setSuggestionLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!userId) return;
+    fetchDailySuggestion();
+  }, [userId]);
+
+
   useEffect(() => {
     const startDelay = 400;
     const charDelay = 110;
@@ -1458,6 +1517,97 @@ function HomePage({
           <div className="home-hero-art-glow" />
           <CookingPanIcon className="home-pan-icon" />
         </div>
+      </section>
+
+      <section className="card gradient-card daily-suggestion-card">
+        <div className="daily-suggestion-top">
+          <div>
+            <p className="home-kicker">Suggested for you</p>
+            <h3 className="section-title">Today’s recipe pick</h3>
+            <p className="sync-line">
+              Based on your pantry and saved preferences.
+            </p>
+          </div>
+
+          <button
+            type="button"
+            className="chip-btn"
+            onClick={() => fetchDailySuggestion({ forceRefresh: true })}
+            disabled={suggestionLoading}
+          >
+            {suggestionLoading ? "Refreshing..." : "Generate new suggestion"}
+          </button>
+        </div>
+
+        {suggestionError ? <p className="error-text">{suggestionError}</p> : null}
+
+        {!suggestionLoading && !dailySuggestion && !suggestionError ? (
+          <p className="sync-line">No suggestion yet. Try again in a moment.</p>
+        ) : null}
+
+        {dailySuggestion ? (
+          <div className="recipe-card gradient-card recipe-card-layout daily-suggestion-result">
+            <div className="recipe-result-image-wrap">
+              {dailySuggestion.recipeImageUrl ? (
+                <img
+                  src={dailySuggestion.recipeImageUrl}
+                  alt={dailySuggestion.recipeName}
+                  className="recipe-result-image"
+                />
+              ) : (
+                <div className="recipe-result-image recipe-result-image-placeholder">
+                  No image
+                </div>
+              )}
+            </div>
+
+            <div className="recipe-result-content">
+              <p className="recipe-title">{dailySuggestion.recipeName}</p>
+              <p className="recipe-meta">
+                ⏱ {dailySuggestion.readyInMinutes ?? "?"} min
+                {dailySuggestion.cuisineHint ? ` • ${dailySuggestion.cuisineHint}` : ""}
+              </p>
+
+              <p className="ingredient-summary">
+                <strong>
+                  Using {dailySuggestion.usedIngredientCount} ingredients:
+                </strong>{" "}
+                {dailySuggestion.usedIngredients?.length
+                  ? dailySuggestion.usedIngredients.join(", ")
+                  : "None"}
+              </p>
+
+              <p className="ingredient-summary">
+                <strong>
+                  Missing {dailySuggestion.missedIngredientCount} ingredients:
+                </strong>{" "}
+                {dailySuggestion.missedIngredients?.length
+                  ? dailySuggestion.missedIngredients.join(", ")
+                  : "None"}
+              </p>
+
+              <button
+                type="button"
+                className="plan-btn"
+                onClick={() =>
+                  onOpenRecipe({
+                    id: dailySuggestion.recipeId,
+                    title: dailySuggestion.recipeName,
+                    imageUrl: dailySuggestion.recipeImageUrl,
+                    readyTime: dailySuggestion.readyInMinutes,
+                    usedIngredientCount: dailySuggestion.usedIngredientCount,
+                    missedIngredientCount: dailySuggestion.missedIngredientCount,
+                    missedIngredients: dailySuggestion.missedIngredients || [],
+                    usedIngredients: dailySuggestion.usedIngredients || [],
+                    allIngredients: dailySuggestion.allIngredients || [],
+                  })
+                }
+              >
+                Check it out!
+              </button>
+            </div>
+          </div>
+        ) : null}
       </section>
 
       <section

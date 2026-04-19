@@ -7,7 +7,8 @@ from app.services.supabase_service import toggle_saved_recipe, get_user_saved_re
 from app.services.spoonacular_service import (
     search_recipes_complex,
     search_recipes_by_ingredients,
-    get_recipe_details_by_id
+    get_recipe_details_by_id,
+    get_personalized_recipe_suggestion,
 )
 
 router = APIRouter(
@@ -69,3 +70,13 @@ def save_recipe(payload: SaveRecipeRequest):
 @router.get("/saved")
 def get_saved_recipes(userId: str = Query(..., min_length=3)):
     return {"userId": userId, "recipes": get_user_saved_recipes(userId)}
+
+@router.get("/suggestion")
+def get_recipe_suggestion(
+    userId: str = Query(..., min_length=3),
+    maxTime: int | None = Query(None, ge=1, le=300),
+):
+    return get_personalized_recipe_suggestion(
+        user_id=userId,
+        max_ready_time=maxTime,
+    )
