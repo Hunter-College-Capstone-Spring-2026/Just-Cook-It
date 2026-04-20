@@ -335,25 +335,20 @@ function App() {
   const [authUser, setAuthUser] = useLocalStorage("jci_auth_user", null);
   const [activePage, setActivePage] = useState("home");
   const [appReady, setAppReady] = useState(false);
-  const [profile, setProfile] = useLocalStorage("jci_profile", defaultProfile);
-  const [settings, setSettings] = useLocalStorage(
-    "jci_settings",
-    defaultSettings,
-  );
+  const [profile, setProfile] = useState(defaultProfile);
+  const [settings, setSettings] = useState(defaultSettings);
+
   const [selectedRecipe, setSelectedRecipe] = useState(null);
-  const [cookedRecipes, setCookedRecipes] = useLocalStorage(
-    `jci_cooked_recipes_${authUser?.userId || "guest"}`,
-    [],
-  );
+  const [cookedRecipes, setCookedRecipes] = useState([]);
+
   const [pantryLanding, setPantryLanding] = useState({
     pantryItems: [],
     recentlyAdded: [],
     recipeTitle: "",
   });
-  const [savedRecipeIds, setSavedRecipeIds] = useLocalStorage(
-    "jci_saved_recipes",
-    [],
-  );
+  const [savedRecipeIds, setSavedRecipeIds] = useState([]);
+  const [savedRecipes, setSavedRecipes] = useState([]);
+  const [dataLoading, setDataLoading] = useState(false);
 
   const userId = authUser?.userId || null;
 
@@ -373,6 +368,7 @@ function App() {
     ? [
         { id: "home", label: "Home" },
         { id: "pantry", label: "Pantry" },
+        { id: "collections", label: "Saved" },
         { id: "profile", label: "Profile" },
         { id: "settings", label: "Settings" },
       ]
@@ -407,71 +403,44 @@ function App() {
     let isMounted = true;
 
     const loadRemoteState = async () => {
+      setDataLoading(true);
       try {
         const [profileResp, settingsResp, savedResp] = await Promise.all([
-          fetch(
-            `${API_BASE_URL}/api/users/profile?userId=${encodeURIComponent(userId)}`,
-          ),
-          fetch(
-            `${API_BASE_URL}/api/users/settings?userId=${encodeURIComponent(userId)}`,
-          ),
-          fetch(
-            `${API_BASE_URL}/recipes/saved?userId=${encodeURIComponent(userId)}`,
-          ),
+          fetch(`${API_BASE_URL}/api/users/profile?userId=${encodeURIComponent(userId)}`),
+          fetch(`${API_BASE_URL}/api/users/settings?userId=${encodeURIComponent(userId)}`),
+          fetch(`${API_BASE_URL}/recipes/saved?userId=${encodeURIComponent(userId)}`),
         ]);
-
+    
         if (profileResp.ok) {
           const profilePayload = await profileResp.json();
           if (isMounted) {
-            const {
-              cookedRecipes: remoteCookedRecipes = [],
-              ...profileFields
-            } = profilePayload;
-            setProfile((current) => mergeProfile(current, profileFields));
+            const { cookedRecipes: remoteCookedRecipes = [], ...profileFields } = profilePayload;
+            setProfile(mergeProfile(defaultProfile, profileFields));
             if (Array.isArray(remoteCookedRecipes)) {
-              setCookedRecipes((current) =>
-                mergeCookedRecipes(current, remoteCookedRecipes),
-              );
+              setCookedRecipes(remoteCookedRecipes.map(normalizeCookedRecipe).filter(Boolean));
             }
-            setProfileSyncMessage("Profile synced with Supabase.");
+            setProfileSyncMessage("Profile synced.");
           }
         } else if (isMounted) {
-          setProfileSyncMessage(
-            "Using local profile (Supabase profile sync unavailable).",
-          );
+          setProfileSyncMessage("Could not load profile.");
         }
-
+    
         if (settingsResp.ok) {
           const settingsPayload = await settingsResp.json();
-          if (isMounted) {
-            setSettings((current) => ({ ...current, ...settingsPayload }));
-            setSettingsSyncMessage("Settings synced with Supabase.");
-          }
-        } else if (isMounted) {
-          setSettingsSyncMessage(
-            "Using local settings (Supabase settings sync unavailable).",
-          );
+          if (isMounted) setSettings({ ...defaultSettings, ...settingsPayload });
         }
-
+    
         if (savedResp.ok) {
           const savedPayload = await savedResp.json();
           if (isMounted && Array.isArray(savedPayload.recipes)) {
-            setSavedRecipeIds(
-              savedPayload.recipes
-                .map((r) => Number(r.recipeId))
-                .filter(Boolean),
-            );
+            setSavedRecipes(savedPayload.recipes);
+            setSavedRecipeIds(savedPayload.recipes.map((r) => Number(r.recipeId)).filter(Boolean));
           }
         }
       } catch {
-        if (isMounted) {
-          setProfileSyncMessage(
-            "Using local profile (could not reach backend).",
-          );
-          setSettingsSyncMessage(
-            "Using local settings (could not reach backend).",
-          );
-        }
+        if (isMounted) setProfileSyncMessage("Could not reach backend.");
+      } finally {
+        if (isMounted) setDataLoading(false);
       }
     };
 
@@ -610,16 +579,20 @@ function App() {
 
   const toggleSavedRecipe = async (recipe) => {
     const recipeId = Number(recipe.id ?? recipe.recipeId);
-    if (!recipeId) return;
-
-    // optimistic update
-    setSavedRecipeIds((current) =>
-      current.includes(recipeId)
-        ? current.filter((id) => id !== recipeId)
-        : [...current, recipeId],
+    if (!recipeId || !userId) return;
+  
+    // optimistic update for both ID list and full objects
+    const isCurrentlySaved = savedRecipeIds.includes(recipeId);
+    setSavedRecipeIds((curr) =>
+      isCurrentlySaved ? curr.filter((id) => id !== recipeId) : [...curr, recipeId]
     );
-
-    if (!userId) return;
+    setSavedRecipes((curr) =>
+      isCurrentlySaved
+        ? curr.filter((r) => Number(r.recipeId) !== recipeId)
+        : [...curr, { recipeId, title: recipe.title ?? "", image: recipe.image ?? "",
+            readyInMinutes: recipe.readyInMinutes ?? null, savedAt: new Date().toISOString() }]
+    );
+  
     try {
       await fetch(`${API_BASE_URL}/recipes/save`, {
         method: "POST",
@@ -628,20 +601,29 @@ function App() {
           user_id: userId,
           recipe: {
             recipeId,
-            title: recipe.title ?? recipe.recipeName ?? "",
-            image: recipe.image ?? recipe.imageUrl ?? "",
-            readyInMinutes: recipe.readyInMinutes ?? recipe.readyTime ?? null,
+            title: recipe.title ?? "",
+            image: recipe.image ?? "",
+            readyInMinutes: recipe.readyInMinutes ?? null,
             cuisines: recipe.cuisines ?? [],
             dishTypes: recipe.dishTypes ?? [],
           },
         }),
       });
     } catch {
-      // rollback on failure
-      setSavedRecipeIds((current) =>
-        current.includes(recipeId)
-          ? current.filter((id) => id !== recipeId)
-          : [...current, recipeId],
+      // rollback both on failure
+      setSavedRecipeIds((curr) =>
+        isCurrentlySaved ? [...curr, recipeId] : curr.filter((id) => id !== recipeId)
+      );
+      setSavedRecipes((curr) =>
+        curr.some((r) => Number(r.recipeId) === recipeId)
+          ? curr.filter((r) => Number(r.recipeId) !== recipeId)
+          : [...curr, {
+              recipeId,
+              title: recipe.title ?? "",
+              image: recipe.image ?? "",
+              readyInMinutes: recipe.readyInMinutes ?? null,
+              savedAt: new Date().toISOString(),
+            }]
       );
     }
   };
@@ -818,6 +800,16 @@ function App() {
               onSave={saveSettings}
               syncMessage={settingsSyncMessage}
               saving={savingSettings}
+            />
+          )}
+
+          {activePage === "collections" && (
+            <CollectionsPage
+              savedRecipes={savedRecipes}
+              cookedRecipes={cookedRecipes}
+              onToggleSaved={toggleSavedRecipe}
+              onResetCooked={resetCookedRecipes}
+              resettingCooked={resettingCookedHistory}
             />
           )}
         </section>
@@ -3138,6 +3130,169 @@ function SettingsPage({ settings, setSettings, onSave, syncMessage, saving }) {
       >
         {saving ? "Saving settings..." : "Save Settings"}
       </button>
+    </>
+  );
+}
+
+function CollectionsPage({ savedRecipes = [], cookedRecipes = [], onToggleSaved, onResetCooked, resettingCooked }) {
+  const [activeTab, setActiveTab] = useState("favorites");
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
+
+  const items = activeTab === "favorites" ? savedRecipes : cookedRecipes;
+  const dateKey = activeTab === "favorites" ? "savedAt" : "cookedAt";
+
+  function formatDate(iso) {
+    if (!iso) return "Recently";
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return "Recently";
+    return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+  }
+
+  function groupByDate(list, key) {
+    return list.reduce((groups, item) => {
+      const label = formatDate(item[key]);
+      if (!groups[label]) groups[label] = [];
+      groups[label].push(item);
+      return groups;
+    }, {});
+  }
+
+  const grouped = groupByDate(items, dateKey);
+
+  return (
+    <>
+      <h2 className="section-title">Collection</h2>
+
+      {/* Tab bar */}
+      <div style={{ display: "flex", gap: 4, borderBottom: "1px solid var(--border, #e5e5e5)", marginBottom: "1.5rem" }}>
+        {[
+          { id: "favorites", label: "Saved", count: savedRecipes.length },
+          { id: "history",   label: "History", count: cookedRecipes.length },
+        ].map((tab) => (
+          <button
+            key={tab.id}
+            type="button"
+            className="nav-btn"
+            style={{
+              borderBottom: "none",
+              borderRadius: 6,
+              padding: "6px 12px",
+              fontWeight: 600,
+              background: activeTab === tab.id ? "#ffffff" : "transparent",
+              color: activeTab === tab.id ? "#000000" : "inherit",
+              boxShadow: activeTab === tab.id ? "0 1px 3px rgba(0,0,0,0.08)" : "none",
+            }}
+            onClick={() => { setActiveTab(tab.id); setShowClearConfirm(false); }}
+          >
+            {tab.label}
+            {tab.count > 0 && (
+              <span style={{ marginLeft: 6, fontSize: 11, opacity: 0.5 }}>
+                {tab.count}
+              </span>
+            )}
+          </button>
+        ))}
+      </div>
+
+      {/* History toolbar */}
+      {activeTab === "history" && cookedRecipes.length > 0 && (
+        <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: "1rem" }}>
+          {!showClearConfirm ? (
+            <button type="button" className="nav-btn" onClick={() => setShowClearConfirm(true)}>
+              Clear history
+            </button>
+          ) : (
+            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              <span style={{ fontSize: 13, opacity: 0.6 }}>Are you sure?</span>
+              <button
+                type="button"
+                className="nav-btn"
+                disabled={resettingCooked}
+                onClick={async () => { await onResetCooked(); setShowClearConfirm(false); }}
+              >
+                {resettingCooked ? "Clearing…" : "Yes, clear"}
+              </button>
+              <button type="button" className="nav-btn" onClick={() => setShowClearConfirm(false)}>
+                Cancel
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Empty state */}
+      {items.length === 0 && (
+        <div style={{ textAlign: "center", padding: "3rem 1rem", opacity: 0.45 }}>
+          <p style={{ fontWeight: 600, marginBottom: 8 }}>
+            {activeTab === "favorites" ? "No saved recipes yet" : "No cooking history yet"}
+          </p>
+          <p style={{ fontSize: 13 }}>
+            {activeTab === "favorites"
+              ? "Tap the bookmark on any recipe to save it here."
+              : "Cook a recipe to start tracking your history."}
+          </p>
+        </div>
+      )}
+
+      {/* Recipe grid grouped by date */}
+      {Object.entries(grouped).map(([label, group]) => (
+        <div key={label} style={{ marginBottom: "1.75rem" }}>
+          <p style={{ fontSize: 11, fontWeight: 600, opacity: 0.4, textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: "0.75rem" }}>
+            {label}
+          </p>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(155px, 1fr))", gap: 12 }}>
+            {group.map((recipe) => (
+              <div
+                key={`${recipe.recipeId}-${recipe[dateKey]}`}
+                className="card"
+                style={{ padding: 0, overflow: "hidden", position: "relative" }}
+              >
+                {recipe.image ? (
+                  <img
+                    src={recipe.image}
+                    alt={recipe.title}
+                    style={{ width: "100%", height: 110, objectFit: "cover", display: "block" }}
+                    onError={(e) => { e.target.style.display = "none"; }}
+                  />
+                ) : (
+                  <div style={{ width: "100%", height: 110, background: "var(--surface, #f5f5f5)", display: "flex", alignItems: "center", justifyContent: "center", opacity: 0.4, fontSize: 28 }}>
+                    🍽
+                  </div>
+                )}
+                <div style={{ padding: "10px 12px" }}>
+                  <p style={{
+                    fontSize: 13, fontWeight: 600, lineHeight: 1.35, marginBottom: 4,
+                    display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden",
+                  }}>
+                    {recipe.title}
+                  </p>
+                  {recipe.readyInMinutes && (
+                    <span style={{ fontSize: 11, opacity: 0.5 }}>{recipe.readyInMinutes} min</span>
+                  )}
+                </div>
+
+                {/* Unsave button — favorites tab only */}
+                {activeTab === "favorites" && (
+                  <button
+                    type="button"
+                    title="Remove from saved"
+                    onClick={() => onToggleSaved(recipe)}
+                    style={{
+                      position: "absolute", top: 7, right: 7,
+                      width: 26, height: 26, borderRadius: "50%",
+                      background: "rgba(0,0,0,0.45)", border: "none",
+                      cursor: "pointer", color: "#ff6b6b", fontSize: 13,
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                    }}
+                  >
+                    ♥
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
     </>
   );
 }

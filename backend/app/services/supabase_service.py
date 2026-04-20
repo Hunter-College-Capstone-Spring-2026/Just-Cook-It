@@ -111,11 +111,9 @@ fix clearing cooked recipe bug:Cleared with warning: cooked recipe reset skipped
 '''
 
 def _upsert_recipe(recipe: dict[str, Any]) -> bool:
-    """
-    Ensure the Recipe row exists before we write a UserRecipe FK.
-    Uses ON CONFLICT DO NOTHING so duplicate inserts are safe.
-    May need to tweak to make sure dupes dont exist
-    """
+    # Ensure the Recipe row exists before we write a UserRecipe FK.
+    # Uses ON CONFLICT DO NOTHING so duplicate inserts are safe.
+    # May need to tweak to make sure dupes dont exist
     try:
         supabase.table(settings.supabase_recipe_table).upsert(
             {
@@ -134,13 +132,7 @@ def _upsert_recipe(recipe: dict[str, Any]) -> bool:
 # ── saved recipes ─────────────────────────────────────────────────────────────
 
 def toggle_saved_recipe(user_id: str, recipe: dict[str, Any]) -> dict[str, Any]:
-    """
-    Bookmark / un-bookmark a recipe.
-    - If no UserRecipe row exists → insert with saved_at = now()
-    - If row exists and saved_at is set → clear saved_at (un-bookmark)
-    - If row exists and saved_at is null → set saved_at = now()
-    Returns {"saved": bool, "warning": str | None}
-    """
+
     recipe_id = recipe.get("recipeId")
     if not recipe_id or not user_id:
         return {"saved": False, "warning": "userId and recipeId are required."}
@@ -276,7 +268,6 @@ def sign_out(jwt: str):
 
 
 def get_user_profile(user_id: str):
-    # Profile data is split across the user table and the generic app-state blob, so we merge both sources here.
     profile: dict[str, Any] = {
         "userId": user_id,
         "name": "",
@@ -288,30 +279,43 @@ def get_user_profile(user_id: str):
 
     try:
         user_row = _safe_first(
-            supabase.table(settings.supabase_user_table).select("*").eq("user_id", user_id).limit(1).execute().data
+            supabase.table(settings.supabase_user_table)
+            .select("*")
+            .eq("user_id", user_id)
+            .limit(1)
+            .execute()
+            .data
         )
         if user_row:
-            profile["name"] = user_row.get("user_name", user_row.get("name", profile["name"]))
-            profile["email"] = user_row.get("user_email", user_row.get("email", profile["email"]))
+            profile["name"] = user_row.get("user_name", "")
+            profile["email"] = user_row.get("user_email", "")
     except Exception:
         pass
 
-    # Attempt to read legacy app state first; if unavailable, use dedicated dietary join table.
+    # Read cooked recipes from UserRecipe (where user_recipe_cooked_at IS NOT NULL)
     try:
-        state_row = _safe_first(
-            supabase.table(settings.supabase_state_table).select("*").eq("user_id", user_id).limit(1).execute().data
+        rows = (
+            supabase.table(settings.supabase_user_recipe_table)
+            .select("user_recipe_cooked_at, recipe:recipe_id(recipe_id, recipe_name, recipe_image_url, recipe_ready_time)")
+            .eq("user_id", user_id)
+            .not_.is_("user_recipe_cooked_at", "null")
+            .order("user_recipe_cooked_at", desc=True)
+            .execute()
+            .data
+            or []
         )
-        state_blob = _get_state_blob(state_row)
-        state_profile = _safe_dict(state_blob.get("profile"))
-        profile.update(
+        profile["cookedRecipes"] = [
             {
-                "dietary": _safe_dict(state_profile.get("dietary", profile.get("dietary", {}))),
-                "notes": state_profile.get("notes", profile.get("notes", "")),
-                "cookedRecipes": _extract_cooked_recipes(state_blob),
+                "recipeId": r.get("recipe_id"),
+                "title": r.get("recipe_name"),
+                "image": r.get("recipe_image_url", ""),
+                "readyInMinutes": r.get("recipe_ready_time"),
+                "cookedAt": row.get("user_recipe_cooked_at"),
             }
-        )
+            for row in rows
+            if (r := row.get("recipe") or {})
+        ]
     except Exception:
-        # ignore missing legacy state table
         pass
 
     if not profile.get("dietary"):
@@ -550,7 +554,7 @@ def get_user_pantry(user_id: str):
 
 #Core data function to add pantry items for the user.
 def add_user_pantry_ingredients(user_id: str, ingredients: list[str]):
-    # Write pantry items idempotently so retries and offline queue replays do not duplicate entries.
+    # Write pantry items so retries and offline queue replays do not duplicate entries.
     normalized = [item.strip() for item in ingredients if item and item.strip()]
     if not normalized:
         return []
