@@ -984,20 +984,6 @@ function App() {
         </section>
       </main>
 
-      <nav className="quick-nav" aria-label="Quick navigation">
-        {navItems.map((item) => (
-          <button
-            key={item.id}
-            type="button"
-            className={`quick-nav-btn ${
-              activePage === item.id ? "active" : ""
-            }`}
-            onClick={() => handlePageChange(item.id)}
-          >
-            {item.label}
-          </button>
-        ))}
-      </nav>
     </div>
   );
 }

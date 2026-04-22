@@ -70,8 +70,7 @@ body::before {
 }
 
 .app-shell .navbar,
-.app-shell main,
-.app-shell .quick-nav {
+.app-shell main {
   opacity: 0;
   transform: translateY(20px);
   filter: blur(16px);
@@ -88,8 +87,7 @@ body::before {
 }
 
 .app-shell.is-ready .navbar,
-.app-shell.is-ready main,
-.app-shell.is-ready .quick-nav {
+.app-shell.is-ready main {
   opacity: 1;
   transform: translateY(0);
   filter: blur(0);
@@ -101,10 +99,6 @@ body::before {
 
 .app-shell.is-ready main {
   transition-delay: 0.1s;
-}
-
-.app-shell.is-ready .quick-nav {
-  transition-delay: 0.18s;
 }
 
 .navbar {
@@ -215,7 +209,6 @@ body::before {
 }
 
 .nav-btn:focus-visible,
-.quick-nav-btn:focus-visible,
 .clear-btn:focus-visible {
   outline: 3px solid rgba(255, 255, 255, 0.55);
   outline-offset: 2px;
@@ -1000,48 +993,6 @@ button:focus-visible {
   border-radius: 14px;
 }
 
-.quick-nav {
-  position: fixed;
-  left: 50%;
-  bottom: 1rem;
-  transform: translateX(-50%);
-  background: rgba(255, 252, 248, 0.84);
-  border: 1px solid rgba(214, 111, 75, 0.22);
-  border-radius: 999px;
-  padding: 0.45rem;
-  display: flex;
-  gap: 0.4rem;
-  z-index: 25;
-  backdrop-filter: blur(14px);
-  box-shadow: 0 14px 28px rgba(74, 44, 29, 0.14);
-  transition: box-shadow 0.25s ease, transform 0.25s ease;
-}
-
-.quick-nav-btn {
-  margin: 0;
-  width: auto;
-  border-radius: 999px;
-  padding: 0.45rem 0.9rem;
-  background: transparent;
-  color: #74351f;
-  border: 1px solid transparent;
-  transition: transform 0.22s ease, box-shadow 0.22s ease,
-    background-color 0.22s ease, border-color 0.22s ease, color 0.22s ease;
-}
-
-.quick-nav-btn.active {
-  background: linear-gradient(135deg, #ffe4d2, #ffd4ba);
-  border-color: rgba(214, 111, 75, 0.42);
-  color: #5f2c19;
-  box-shadow: 0 10px 18px rgba(214, 111, 75, 0.16);
-}
-
-.quick-nav-btn:hover {
-  transform: translateY(-1px);
-  background: rgba(255, 241, 231, 0.86);
-  box-shadow: 0 10px 16px rgba(74, 44, 29, 0.12);
-}
-
 .cursor-aura,
 .cursor-core {
   position: fixed;
@@ -1402,8 +1353,7 @@ button:focus-visible {
 @media (prefers-reduced-motion: reduce) {
   .app-calm-overlay,
   .app-shell .navbar,
-  .app-shell main,
-  .app-shell .quick-nav {
+  .app-shell main {
     transition: none;
     transform: none;
     filter: none;
@@ -1414,8 +1364,7 @@ button:focus-visible {
   }
 
   .app-shell .navbar,
-  .app-shell main,
-  .app-shell .quick-nav {
+  .app-shell main {
     opacity: 1;
   }
 }
@@ -1858,21 +1807,6 @@ button:focus-visible {
 
   .taste-chip-row {
     justify-content: flex-start;
-  }
-
-  .quick-nav {
-    width: calc(100% - 1rem);
-    justify-content: space-between;
-    border-radius: 14px;
-    gap: 0.3rem;
-  }
-
-  .quick-nav-btn {
-    flex: 1;
-    text-align: center;
-    min-width: 0;
-    padding: 0.45rem 0.35rem;
-    font-size: 0.82rem;
   }
 
   .time-input-compact,
