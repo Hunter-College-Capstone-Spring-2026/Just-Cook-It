@@ -513,6 +513,28 @@ def clear_user_cooked_recipes(user_id: str):
         warning = f"cooked recipe reset skipped: {exc}"
     return {"saved": True, "warning": warning, "recipes": []}
 
+
+def clear_user_pantry(user_id: str):
+    if not user_id:
+        return {"saved": False, "warning": "userId is required.", "ingredients": []}
+
+    warning = None
+    try:
+        (
+            supabase.table(settings.supabase_user_ingredient_table)
+            .delete()
+            .eq("user_id", user_id)
+            .execute()
+        )
+    except Exception as exc:
+        warning = f"pantry reset skipped: {exc}"
+
+    return {
+        "saved": warning is None,
+        "warning": warning,
+        "ingredients": get_user_pantry(user_id),
+    }
+
 #Core data function to get the user's pantry items.
 def get_user_pantry(user_id: str):
     # Pantry data may arrive either as denormalized names on the join table or via ingredient IDs from older rows.

@@ -5,6 +5,7 @@ from fastapi import APIRouter, HTTPException, Query
 from app.models.ingredient import PantryAddRequest, PantryRemoveRequest, CookRecipeRequest
 from app.services.supabase_service import (
     add_user_pantry_ingredients,
+    clear_user_pantry,
     get_user_pantry,
     remove_user_pantry_ingredient,
     save_user_cooked_recipe,
@@ -19,6 +20,12 @@ router = APIRouter(
 @router.get("/")
 def get_pantry(userId: str = Query(..., min_length=3)):
     return {"userId": userId, "ingredients": get_user_pantry(userId)}
+
+
+@router.delete("/")
+def clear_pantry(userId: str = Query(..., min_length=3)):
+    result = clear_user_pantry(userId)
+    return {"ok": result.get("saved", False), **result}
 
 #Backend entry point to add ingredients to the user's pantry
 @router.post("/add")

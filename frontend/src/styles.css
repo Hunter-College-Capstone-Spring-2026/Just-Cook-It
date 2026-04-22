@@ -140,6 +140,26 @@ body::before {
   gap: 0.75rem;
 }
 
+.logo-btn {
+  width: auto;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  transition: transform 0.22s ease, opacity 0.22s ease;
+}
+
+.logo-btn:hover {
+  transform: translateY(-1px);
+  opacity: 0.96;
+}
+
+.logo-btn:focus-visible {
+  outline: 3px solid rgba(255, 255, 255, 0.55);
+  outline-offset: 6px;
+}
+
 .logo-mark {
   width: 2.4rem;
   height: 2.4rem;
@@ -380,6 +400,21 @@ button:focus-visible {
   max-width: 36rem;
 }
 
+.home-hero-actions {
+  margin-top: 0.4rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.home-hero-cta {
+  margin: 0;
+  padding: 0.8rem 1.4rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  box-shadow: 0 14px 28px rgba(214, 111, 75, 0.18);
+}
+
 .home-hero-pills {
   margin-top: 0.25rem;
   display: flex;
@@ -430,6 +465,7 @@ button:focus-visible {
   max-width: 680px;
   margin: 1rem auto;
   text-align: center;
+  scroll-margin-top: 7rem;
 }
 
 #interaction.show {
@@ -1198,6 +1234,7 @@ button:focus-visible {
   display: grid;
   grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.9fr);
   gap: 1rem;
+  align-items: start;
 }
 
 .history-list,
@@ -1264,8 +1301,91 @@ button:focus-visible {
   white-space: nowrap;
 }
 
+.profile-history-card,
 .profile-card-compact {
-  min-height: 100%;
+  align-self: start;
+}
+
+.profile-history-card .history-list,
+.profile-card-compact .profile-mini-list {
+  max-height: 18rem;
+  overflow-y: auto;
+  padding-right: 0.25rem;
+  scrollbar-gutter: stable;
+}
+
+.profile-card-compact {
+  min-height: 0;
+}
+
+.favorites-hero-card,
+.favorites-list-card,
+.favorites-empty-card {
+  animation: cardIn 0.4s ease both;
+}
+
+.favorites-hero-card {
+  display: grid;
+  gap: 1rem;
+  background:
+    radial-gradient(circle at top right, rgba(255, 225, 198, 0.94), transparent 38%),
+    linear-gradient(135deg, rgba(255, 248, 242, 0.99), rgba(255, 240, 229, 0.96));
+}
+
+.favorites-hero-top,
+.favorites-list-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+}
+
+.favorites-hero-copy {
+  display: grid;
+  gap: 0.25rem;
+}
+
+.favorites-hero-copy h3,
+.favorites-list-top h3,
+.favorites-empty-card h3 {
+  margin: 0;
+}
+
+.favorites-hero-note,
+.favorites-empty-copy {
+  margin-bottom: 0;
+}
+
+.favorites-stat-grid {
+  min-width: 0;
+  width: 100%;
+}
+
+.favorites-empty-card {
+  display: grid;
+  gap: 0.8rem;
+  justify-items: flex-start;
+  background:
+    radial-gradient(circle at top right, rgba(255, 232, 205, 0.88), transparent 36%),
+    linear-gradient(135deg, rgba(255, 249, 244, 0.98), rgba(255, 243, 235, 0.97));
+}
+
+.favorites-list-top {
+  margin-bottom: 0.9rem;
+}
+
+.favorites-list {
+  gap: 1rem;
+}
+
+.favorites-card {
+  border: 1px solid rgba(214, 111, 75, 0.16);
+}
+
+.favorites-meta {
+  margin: 0.22rem 0 0.68rem;
+  color: var(--text-secondary);
+  font-size: 0.93rem;
 }
 
 @keyframes cardIn {
@@ -1718,6 +1838,8 @@ button:focus-visible {
   .pantry-landing-top,
   .pantry-dashboard-top,
   .pantry-sanctuary-top,
+  .favorites-hero-top,
+  .favorites-list-top,
   .guide-header,
   .guide-progress-row {
     flex-direction: column;
@@ -1742,11 +1864,15 @@ button:focus-visible {
     width: calc(100% - 1rem);
     justify-content: space-between;
     border-radius: 14px;
+    gap: 0.3rem;
   }
 
   .quick-nav-btn {
     flex: 1;
     text-align: center;
+    min-width: 0;
+    padding: 0.45rem 0.35rem;
+    font-size: 0.82rem;
   }
 
   .time-input-compact,

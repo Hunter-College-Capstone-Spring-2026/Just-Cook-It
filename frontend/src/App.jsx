@@ -220,6 +220,63 @@ function mergeCookedRecipes(base, incoming) {
     .slice(0, 30);
 }
 
+function normalizeSavedRecipe(recipe) {
+  if (!recipe || typeof recipe !== "object") return null;
+
+  const recipeId = Number(recipe.recipeId ?? recipe.id);
+  const title = cleanText(recipe.title ?? recipe.recipeName);
+  if (!Number.isFinite(recipeId) || !title) return null;
+
+  const readyInMinutes = Number.isFinite(
+    Number(recipe.readyInMinutes ?? recipe.readyTime),
+  )
+    ? Number(recipe.readyInMinutes ?? recipe.readyTime)
+    : null;
+
+  return {
+    recipeId,
+    title,
+    image: cleanText(recipe.image ?? recipe.imageUrl),
+    readyInMinutes,
+    cuisines: normalizeStringList(recipe.cuisines),
+    dishTypes: normalizeStringList(recipe.dishTypes),
+    ingredients: normalizeStringList(recipe.ingredients ?? recipe.allIngredients),
+    savedAt: cleanText(recipe.savedAt) || new Date().toISOString(),
+  };
+}
+
+function mergeSavedRecipes(base, incoming) {
+  const combined = [...(incoming || []), ...(base || [])]
+    .map((recipe) => normalizeSavedRecipe(recipe))
+    .filter(Boolean);
+
+  const deduped = new Map();
+  combined.forEach((recipe) => {
+    if (!deduped.has(recipe.recipeId)) {
+      deduped.set(recipe.recipeId, recipe);
+    }
+  });
+
+  return Array.from(deduped.values()).sort(
+    (left, right) =>
+      new Date(right.savedAt).getTime() - new Date(left.savedAt).getTime(),
+  );
+}
+
+function buildRecipePreview(recipe) {
+  const normalized = normalizeSavedRecipe(recipe);
+  if (!normalized) return null;
+
+  return {
+    id: normalized.recipeId,
+    title: normalized.title,
+    imageUrl: normalized.image,
+    readyTime: normalized.readyInMinutes,
+    cuisines: normalized.cuisines,
+    dishTypes: normalized.dishTypes,
+  };
+}
+
 function inferRecipeCuisines(recipe) {
   const direct = normalizeStringList(recipe?.cuisines);
   if (direct.length > 0) return direct;
@@ -346,14 +403,20 @@ function App() {
     recentlyAdded: [],
     recipeTitle: "",
   });
-  const [savedRecipeIds, setSavedRecipeIds] = useState([]);
-  const [savedRecipes, setSavedRecipes] = useState([]);
+  const [savedRecipeIds, setSavedRecipeIds] = useLocalStorage(
+    `jci_saved_recipe_ids_${authUser?.userId || "guest"}`,
+    [],
+  );
+  const [savedRecipes, setSavedRecipes] = useLocalStorage(
+    `jci_saved_recipe_cards_${authUser?.userId || "guest"}`,
+    [],
+  );
   const [dataLoading, setDataLoading] = useState(false);
 
   const userId = authUser?.userId || null;
 
   const [profileSyncMessage, setProfileSyncMessage] = useState(
-    "Profile stored locally.",
+    "",
   );
   const [settingsSyncMessage, setSettingsSyncMessage] = useState(
     "Settings stored locally.",
@@ -361,6 +424,7 @@ function App() {
   const [savingProfile, setSavingProfile] = useState(false);
   const [savingSettings, setSavingSettings] = useState(false);
   const [resettingCookedHistory, setResettingCookedHistory] = useState(false);
+  const [resettingPantry, setResettingPantry] = useState(false);
 
   const isLoggedIn = !!authUser;
 
@@ -368,7 +432,7 @@ function App() {
     ? [
         { id: "home", label: "Home" },
         { id: "pantry", label: "Pantry" },
-        { id: "collections", label: "Saved" },
+        { id: "favorites", label: "Favorites" },
         { id: "profile", label: "Profile" },
         { id: "settings", label: "Settings" },
       ]
@@ -433,8 +497,11 @@ function App() {
         if (savedResp.ok) {
           const savedPayload = await savedResp.json();
           if (isMounted && Array.isArray(savedPayload.recipes)) {
-            setSavedRecipes(savedPayload.recipes);
-            setSavedRecipeIds(savedPayload.recipes.map((r) => Number(r.recipeId)).filter(Boolean));
+            const nextSavedRecipes = mergeSavedRecipes([], savedPayload.recipes);
+            setSavedRecipes(nextSavedRecipes);
+            setSavedRecipeIds(
+              nextSavedRecipes.map((recipe) => recipe.recipeId).filter(Boolean),
+            );
           }
         }
       } catch {
@@ -448,7 +515,14 @@ function App() {
     return () => {
       isMounted = false;
     };
-  }, [setCookedRecipes, setProfile, setSettings, userId]);
+  }, [
+    setCookedRecipes,
+    setProfile,
+    setSavedRecipeIds,
+    setSavedRecipes,
+    setSettings,
+    userId,
+  ]);
 
   const saveProfile = async () => {
     setSavingProfile(true);
@@ -517,9 +591,7 @@ function App() {
     const { preservePantryContext = false } = options;
 
     setActivePage(pageId);
-    if (pageId !== "home") {
-      setSelectedRecipe(null);
-    }
+    setSelectedRecipe(null);
 
     if (pageId !== "pantry" || !preservePantryContext) {
       setPantryLanding((current) => ({
@@ -577,24 +649,77 @@ function App() {
     }
   };
 
+  const resetPantryItems = async () => {
+    if (!userId) return [];
+
+    const pantryStorageKey = `jci_pantry_${userId}`;
+    setResettingPantry(true);
+
+    try {
+      const response = await fetch(
+        `${API_BASE_URL}/api/pantry/?userId=${encodeURIComponent(userId)}`,
+        { method: "DELETE" },
+      );
+      const payload = await response.json();
+
+      if (!response.ok || payload?.ok === false) {
+        throw new Error(
+          payload?.warning || payload?.detail || "Could not clear pantry.",
+        );
+      }
+
+      const nextPantryItems = Array.isArray(payload.ingredients)
+        ? payload.ingredients
+        : [];
+      window.localStorage.setItem(
+        pantryStorageKey,
+        JSON.stringify(nextPantryItems),
+      );
+      window.localStorage.setItem("jci_queued_pantry_adds", JSON.stringify([]));
+      setPantryLanding({
+        pantryItems: nextPantryItems,
+        recentlyAdded: [],
+        recipeTitle: "",
+      });
+      return nextPantryItems;
+    } finally {
+      setResettingPantry(false);
+    }
+  };
+
   const toggleSavedRecipe = async (recipe) => {
     const recipeId = Number(recipe.id ?? recipe.recipeId);
-    if (!recipeId || !userId) return;
-  
-    // optimistic update for both ID list and full objects
-    const isCurrentlySaved = savedRecipeIds.includes(recipeId);
-    setSavedRecipeIds((curr) =>
-      isCurrentlySaved ? curr.filter((id) => id !== recipeId) : [...curr, recipeId]
+    if (!recipeId) return;
+    const previousSavedRecipeIds = savedRecipeIds;
+    const previousSavedRecipes = savedRecipes;
+    const wasSaved = savedRecipeIds.includes(recipeId);
+    const optimisticRecipe = normalizeSavedRecipe({
+      ...recipe,
+      recipeId,
+      title: recipe.title ?? recipe.recipeName ?? "",
+      image: recipe.image ?? recipe.imageUrl ?? "",
+      readyInMinutes: recipe.readyInMinutes ?? recipe.readyTime ?? null,
+      cuisines: recipe.cuisines ?? [],
+      dishTypes: recipe.dishTypes ?? [],
+      ingredients: recipe.ingredients ?? recipe.allIngredients ?? [],
+      savedAt: recipe.savedAt ?? new Date().toISOString(),
+    });
+
+    // optimistic update
+    setSavedRecipeIds((current) =>
+      current.includes(recipeId)
+        ? current.filter((id) => id !== recipeId)
+        : [...current, recipeId],
     );
-    setSavedRecipes((curr) =>
-      isCurrentlySaved
-        ? curr.filter((r) => Number(r.recipeId) !== recipeId)
-        : [...curr, { recipeId, title: recipe.title ?? "", image: recipe.image ?? "",
-            readyInMinutes: recipe.readyInMinutes ?? null, savedAt: new Date().toISOString() }]
+    setSavedRecipes((current) =>
+      wasSaved
+        ? current.filter((savedRecipe) => savedRecipe.recipeId !== recipeId)
+        : mergeSavedRecipes(current, optimisticRecipe ? [optimisticRecipe] : []),
     );
-  
+
+    if (!userId) return;
     try {
-      await fetch(`${API_BASE_URL}/recipes/save`, {
+      const response = await fetch(`${API_BASE_URL}/recipes/save`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -609,22 +734,33 @@ function App() {
           },
         }),
       });
+      const payload = await response.json();
+
+      if (!response.ok || payload?.ok === false) {
+        throw new Error(payload?.warning || payload?.detail || "Could not update favorites.");
+      }
+
+      if (payload?.saved === false) {
+        setSavedRecipeIds((current) =>
+          current.filter((id) => id !== recipeId),
+        );
+        setSavedRecipes((current) =>
+          current.filter((savedRecipe) => savedRecipe.recipeId !== recipeId),
+        );
+        return;
+      }
+
+      if (payload?.saved === true && optimisticRecipe) {
+        setSavedRecipeIds((current) =>
+          current.includes(recipeId) ? current : [...current, recipeId],
+        );
+        setSavedRecipes((current) =>
+          mergeSavedRecipes(current, [optimisticRecipe]),
+        );
+      }
     } catch {
-      // rollback both on failure
-      setSavedRecipeIds((curr) =>
-        isCurrentlySaved ? [...curr, recipeId] : curr.filter((id) => id !== recipeId)
-      );
-      setSavedRecipes((curr) =>
-        curr.some((r) => Number(r.recipeId) === recipeId)
-          ? curr.filter((r) => Number(r.recipeId) !== recipeId)
-          : [...curr, {
-              recipeId,
-              title: recipe.title ?? "",
-              image: recipe.image ?? "",
-              readyInMinutes: recipe.readyInMinutes ?? null,
-              savedAt: new Date().toISOString(),
-            }]
-      );
+      setSavedRecipeIds(previousSavedRecipeIds);
+      setSavedRecipes(previousSavedRecipes);
     }
   };
 
@@ -699,12 +835,17 @@ function App() {
       <div className="app-calm-overlay" aria-hidden="true" />
       <CursorAura />
       <header className="navbar">
-        <h1 className="logo">
+        <button
+          type="button"
+          className="logo logo-btn"
+          onClick={() => handlePageChange("home")}
+          aria-label="Go to home page"
+        >
           <span className="logo-mark">
             <CookingPanIcon className="logo-icon" />
           </span>
           <span>Just Cook It!</span>
-        </h1>
+        </button>
         <nav>
           <ul className="nav-links">
             {navItems.map((item) => (
@@ -775,7 +916,44 @@ function App() {
               lastCookedRecipe={cookedRecipes[0] || null}
               cookedRecipes={cookedRecipes}
               onGoHome={() => handlePageChange("home")}
+              onResetCooked={resetCookedRecipes}
+              resettingCooked={resettingCookedHistory}
+              onResetPantry={resetPantryItems}
+              resettingPantry={resettingPantry}
             />
+          )}
+
+          {activePage === "favorites" && (
+            <>
+              {!selectedRecipe ? (
+                <FavoritesPage
+                  savedRecipes={savedRecipes}
+                  savedRecipeIds={savedRecipeIds}
+                  onToggleSaved={toggleSavedRecipe}
+                  onOpenRecipe={(recipe) => setSelectedRecipe(recipe)}
+                  onGoHome={() => handlePageChange("home")}
+                />
+              ) : (
+                <RecipeDetailsPage
+                  recipe={selectedRecipe}
+                  userId={userId}
+                  onBack={() => setSelectedRecipe(null)}
+                  onCookedRecipe={recordCookedRecipe}
+                  onCooked={({ pantryItems, recentlyAdded, recipeTitle }) => {
+                    setPantryLanding({
+                      pantryItems,
+                      recentlyAdded,
+                      recipeTitle,
+                    });
+                    handlePageChange("pantry", {
+                      preservePantryContext: true,
+                    });
+                  }}
+                  savedRecipeIds={savedRecipeIds}
+                  onToggleSaved={toggleSavedRecipe}
+                />
+              )}
+            </>
           )}
 
           {activePage === "profile" && (
@@ -803,15 +981,6 @@ function App() {
             />
           )}
 
-          {activePage === "collections" && (
-            <CollectionsPage
-              savedRecipes={savedRecipes}
-              cookedRecipes={cookedRecipes}
-              onToggleSaved={toggleSavedRecipe}
-              onResetCooked={resetCookedRecipes}
-              resettingCooked={resettingCookedHistory}
-            />
-          )}
         </section>
       </main>
 
@@ -1521,6 +1690,20 @@ function HomePage({
     setApiError("");
   };
 
+  const jumpToGenerator = () => {
+    setShowInteraction(true);
+
+    window.setTimeout(() => {
+      document.getElementById("interaction")?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+      window.setTimeout(() => {
+        document.getElementById("userInput")?.focus();
+      }, 220);
+    }, 80);
+  };
+
   const quickSets = [
     "rice",
     "eggs",
@@ -1556,6 +1739,16 @@ function HomePage({
           <p className="search-subtitle home-search-subtitle">
             Add ingredients or describe the meal you want.
           </p>
+
+          <div className="home-hero-actions">
+            <button
+              type="button"
+              className="plan-btn home-hero-cta"
+              onClick={jumpToGenerator}
+            >
+              Let's cook!
+            </button>
+          </div>
 
           <div className="home-hero-pills">
             <span className="home-hero-pill">
@@ -2360,6 +2553,10 @@ function PantryPage({
   lastCookedRecipe,
   cookedRecipes,
   onGoHome,
+  onResetCooked,
+  resettingCooked,
+  onResetPantry,
+  resettingPantry,
 }) {
   const [pantryItems, setPantryItems] = useState(initialPantryItems || []);
   const [addDraft, setAddDraft] = useState("");
@@ -2454,6 +2651,34 @@ function PantryPage({
       .split(/[,\n]/)
       .map((item) => item.trim())
       .filter(Boolean);
+
+  const handleResetCooked = async () => {
+    if (cookedRecipes.length === 0 || resettingCooked) return;
+
+    const confirmed = window.confirm("Clear your cooked history?");
+    if (!confirmed) return;
+
+    await onResetCooked?.();
+  };
+
+  const handleResetPantry = async () => {
+    if (displayPantryItems.length === 0 || resettingPantry) return;
+
+    const confirmed = window.confirm("Clear your pantry?");
+    if (!confirmed) return;
+
+    setAddError("");
+
+    try {
+      const nextPantryItems = await onResetPantry?.();
+      setPantryItems(Array.isArray(nextPantryItems) ? nextPantryItems : []);
+      setManualRecentlyAdded([]);
+      setAddDraft("");
+      setError("");
+    } catch (resetError) {
+      setAddError(formatRequestError(resetError, "Could not clear pantry."));
+    }
+  };
 
   const addPantryItems = async () => {
     const nextItems = parsePantryDraft(addDraft);
@@ -2557,7 +2782,17 @@ function PantryPage({
         <section className="card gradient-card profile-card pantry-history-card">
           <div className="profile-panel-top pantry-catalog-top">
             <h3>Cooked</h3>
-            <span className="profile-inline-count">{cookedRecipes.length}</span>
+            <div className="profile-panel-actions">
+              <span className="profile-inline-count">{cookedRecipes.length}</span>
+              <button
+                type="button"
+                className="secondary-btn"
+                onClick={handleResetCooked}
+                disabled={cookedRecipes.length === 0 || resettingCooked}
+              >
+                {resettingCooked ? "Resetting..." : "Reset"}
+              </button>
+            </div>
           </div>
 
           {recentCooked.length > 0 ? (
@@ -2602,9 +2837,19 @@ function PantryPage({
         <section className="card gradient-card pantry-catalog-card">
           <div className="pantry-catalog-top">
             <h3>Pantry</h3>
-            <span className="profile-inline-count">
-              {displayPantryItems.length}
-            </span>
+            <div className="profile-panel-actions">
+              <span className="profile-inline-count">
+                {displayPantryItems.length}
+              </span>
+              <button
+                type="button"
+                className="secondary-btn"
+                onClick={handleResetPantry}
+                disabled={displayPantryItems.length === 0 || resettingPantry}
+              >
+                {resettingPantry ? "Resetting..." : "Reset"}
+              </button>
+            </div>
           </div>
 
           <div className="pantry-add-panel">
@@ -2663,6 +2908,159 @@ function PantryPage({
           ) : null}
         </section>
       </div>
+    </>
+  );
+}
+
+function FavoritesPage({
+  savedRecipes,
+  savedRecipeIds,
+  onToggleSaved,
+  onOpenRecipe,
+  onGoHome,
+}) {
+  const latestSavedRecipe = savedRecipes[0] || null;
+  const savedCountLabel = savedRecipes.length === 1 ? "recipe" : "recipes";
+
+  return (
+    <>
+      <h2 className="section-title">Favorites</h2>
+      <p className="sync-line">Save recipes here so they are easy to revisit.</p>
+
+      <section className="card gradient-card favorites-hero-card">
+        <div className="favorites-hero-top">
+          <div className="favorites-hero-copy">
+            <p className="profile-kicker">Recipe box</p>
+            <h3>
+              {latestSavedRecipe
+                ? latestSavedRecipe.title
+                : "Your next go-to meals will live here"}
+            </h3>
+            <p className="sync-line favorites-hero-note">
+              {latestSavedRecipe
+                ? `Latest save ${formatCookedDate(latestSavedRecipe.savedAt)}.`
+                : "Tap the heart on any recipe card to save it for later."}
+            </p>
+          </div>
+
+          <button type="button" className="plan-btn" onClick={onGoHome}>
+            Browse recipes
+          </button>
+        </div>
+
+        <div className="profile-stat-grid favorites-stat-grid">
+          <div className="profile-stat-tile">
+            <span className="profile-stat-label">Saved</span>
+            <strong>{savedRecipes.length}</strong>
+            <span className="pantry-count-label">{savedCountLabel}</span>
+          </div>
+          <div className="profile-stat-tile">
+            <span className="profile-stat-label">Latest</span>
+            <strong>
+              {latestSavedRecipe
+                ? formatCookedDate(latestSavedRecipe.savedAt)
+                : "None yet"}
+            </strong>
+            <span className="pantry-count-label">
+              {latestSavedRecipe ? "most recent" : "start saving"}
+            </span>
+          </div>
+          <div className="profile-stat-tile wide">
+            <span className="profile-stat-label">Next up</span>
+            <strong>
+              {latestSavedRecipe
+                ? latestSavedRecipe.title
+                : "Save a recipe from Home"}
+            </strong>
+          </div>
+        </div>
+      </section>
+
+      {savedRecipes.length === 0 ? (
+        <section className="card gradient-card favorites-empty-card">
+          <p className="profile-kicker">Nothing saved yet</p>
+          <h3>Build your recipe box as you browse.</h3>
+          <p className="sync-line favorites-empty-copy">
+            Favorites you heart on the Home page will show up here instantly.
+          </p>
+          <button type="button" className="plan-btn" onClick={onGoHome}>
+            Find recipes
+          </button>
+        </section>
+      ) : (
+        <section className="card gradient-card favorites-list-card">
+          <div className="favorites-list-top">
+            <h3>Saved recipes</h3>
+            <span className="profile-inline-count">{savedRecipes.length}</span>
+          </div>
+
+          <ul className="recipe-list favorites-list">
+            {savedRecipes.map((recipe) => {
+              const recipePreview = buildRecipePreview(recipe);
+              if (!recipePreview) return null;
+
+              return (
+                <li
+                  key={recipe.recipeId}
+                  className="recipe-card gradient-card recipe-card-layout favorites-card"
+                >
+                  <div className="recipe-result-image-wrap">
+                    {recipe.image ? (
+                      <img
+                        src={recipe.image}
+                        alt={recipe.title}
+                        className="recipe-result-image"
+                      />
+                    ) : (
+                      <div className="recipe-result-image recipe-result-image-placeholder">
+                        No image
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="recipe-result-content">
+                    <div className="recipe-card-top">
+                      <button
+                        type="button"
+                        className={`save-icon-btn ${
+                          savedRecipeIds.includes(recipe.recipeId) ? "saved" : ""
+                        }`}
+                        onClick={() => onToggleSaved(recipe)}
+                        aria-label={
+                          savedRecipeIds.includes(recipe.recipeId)
+                            ? "Remove from favorites"
+                            : "Save recipe"
+                        }
+                        title={
+                          savedRecipeIds.includes(recipe.recipeId)
+                            ? "Remove from favorites"
+                            : "Save recipe"
+                        }
+                      >
+                        {savedRecipeIds.includes(recipe.recipeId) ? "♥" : "♡"}
+                      </button>
+                    </div>
+
+                    <p className="recipe-title">{recipe.title}</p>
+                    <p className="favorites-meta">
+                      Saved {formatCookedDate(recipe.savedAt)}
+                      {recipe.readyInMinutes ? ` • ${recipe.readyInMinutes} min` : ""}
+                    </p>
+
+                    <button
+                      type="button"
+                      className="plan-btn"
+                      onClick={() => onOpenRecipe(recipePreview)}
+                    >
+                      Open recipe
+                    </button>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+      )}
     </>
   );
 }
@@ -2811,7 +3209,7 @@ function ProfilePage({
   return (
     <>
       <h2 className="section-title">Profile</h2>
-      <p className="sync-line">{syncMessage}</p>
+      {syncMessage ? <p className="sync-line">{syncMessage}</p> : null}
 
       <section className="card gradient-card profile-card profile-hero-card">
         <div className="profile-hero-top">
