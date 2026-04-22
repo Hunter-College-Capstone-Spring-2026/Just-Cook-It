@@ -349,6 +349,7 @@ button:focus-visible {
 }
 
 .home-hero-card {
+  width: 100%;
   max-width: 980px;
   margin: 0 auto 1.25rem;
   display: grid;
@@ -455,7 +456,8 @@ button:focus-visible {
   opacity: 0;
   transform: translateY(20px);
   transition: opacity 0.6s ease, transform 0.6s ease;
-  max-width: 680px;
+  width: 100%;
+  max-width: 980px;
   margin: 1rem auto;
   text-align: center;
   scroll-margin-top: 7rem;
@@ -508,8 +510,8 @@ button:focus-visible {
 }
 
 .initial-search-panel {
-  margin: 1rem auto 0.6rem;
-  max-width: 760px;
+  width: 100%;
+  margin: 1rem 0 0.6rem;
   border: 1px solid rgba(214, 111, 75, 0.22);
   border-radius: 16px;
   padding: 1rem;
@@ -2017,6 +2019,10 @@ button:focus-visible {
 }
 
 .daily-suggestion-panel {
+  width: 100%;
+  max-width: 980px;
+  margin-left: auto;
+  margin-right: auto;
   margin-top: -0.2rem;
 }
 
