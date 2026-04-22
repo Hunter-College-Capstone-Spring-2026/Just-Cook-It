@@ -16,11 +16,12 @@ const defaultProfile = {
 };
 
 const defaultSettings = {
-  notifications: true,
+  notifications: false,
   quickRecipes: true,
   units: "metric",
-  allowUsageAnalytics: false,
-  allowProgressNudges: true,
+  smartSuggestions: true,
+  autoStartGuide: false,
+  ingredientInsights: true,
 };
 
 function useLocalStorage(key, initialValue) {
@@ -337,6 +338,77 @@ function formatCookedDate(value) {
   }).format(date);
 }
 
+function getNotificationPermissionState() {
+  if (typeof window === "undefined" || !("Notification" in window)) {
+    return "unsupported";
+  }
+  return Notification.permission;
+}
+
+async function requestBrowserNotificationPermission() {
+  const currentState = getNotificationPermissionState();
+  if (currentState === "unsupported" || currentState !== "default") {
+    return currentState;
+  }
+
+  try {
+    return await Notification.requestPermission();
+  } catch {
+    return getNotificationPermissionState();
+  }
+}
+
+function sendBrowserNotification(title, options = {}) {
+  if (getNotificationPermissionState() !== "granted") return false;
+
+  try {
+    const notification = new Notification(title, options);
+    const closeAfterMs =
+      typeof options.closeAfterMs === "number" ? options.closeAfterMs : 4500;
+    window.setTimeout(() => notification.close(), closeAfterMs);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function formatMeasureValue(value) {
+  const numericValue = Number(value);
+  if (!Number.isFinite(numericValue)) return cleanText(value);
+
+  return new Intl.NumberFormat("en-US", {
+    maximumFractionDigits: numericValue < 10 ? 2 : 1,
+  }).format(numericValue);
+}
+
+function formatIngredientMeasure(measure) {
+  if (!measure) return "";
+
+  const amountLabel = formatMeasureValue(measure.amount);
+  const unitLabel = cleanText(
+    measure.unitShort || measure.unitLong || measure.unit,
+  );
+
+  return [amountLabel, unitLabel].filter(Boolean).join(" ").trim();
+}
+
+function formatIngredientForUnits(ingredient, units = "metric") {
+  if (!ingredient || typeof ingredient !== "object") return "";
+
+  const preferredMeasure =
+    units === "imperial" ? ingredient?.measures?.us : ingredient?.measures?.metric;
+  const fallbackMeasure =
+    ingredient?.measures?.metric || ingredient?.measures?.us || null;
+  const measureLabel = formatIngredientMeasure(preferredMeasure || fallbackMeasure);
+  const ingredientName = cleanText(ingredient.originalName || ingredient.name);
+
+  if (measureLabel && ingredientName) {
+    return `${measureLabel} ${ingredientName}`.trim();
+  }
+
+  return cleanText(ingredient.original || ingredient.originalName || ingredient.name);
+}
+
 function CookingPanIcon({ className = "" }) {
   return (
     <svg
@@ -393,7 +465,7 @@ function App() {
   const [activePage, setActivePage] = useState("home");
   const [appReady, setAppReady] = useState(false);
   const [profile, setProfile] = useState(defaultProfile);
-  const [settings, setSettings] = useState(defaultSettings);
+  const [settings, setSettings] = useLocalStorage("jci_settings", defaultSettings);
 
   const [selectedRecipe, setSelectedRecipe] = useState(null);
   const [cookedRecipes, setCookedRecipes] = useState([]);
@@ -491,7 +563,16 @@ function App() {
     
         if (settingsResp.ok) {
           const settingsPayload = await settingsResp.json();
-          if (isMounted) setSettings({ ...defaultSettings, ...settingsPayload });
+          if (isMounted) {
+            setSettings((current) => ({
+              ...defaultSettings,
+              ...current,
+              ...settingsPayload,
+            }));
+            setSettingsSyncMessage("Settings synced.");
+          }
+        } else if (isMounted) {
+          setSettingsSyncMessage("Using saved settings locally.");
         }
     
         if (savedResp.ok) {
@@ -505,7 +586,10 @@ function App() {
           }
         }
       } catch {
-        if (isMounted) setProfileSyncMessage("Could not reach backend.");
+        if (isMounted) {
+          setProfileSyncMessage("Could not reach backend.");
+          setSettingsSyncMessage("Using saved settings locally.");
+        }
       } finally {
         if (isMounted) setDataLoading(false);
       }
@@ -888,6 +972,7 @@ function App() {
                 <RecipeDetailsPage
                   recipe={selectedRecipe}
                   userId={userId}
+                  settings={settings}
                   onBack={() => setSelectedRecipe(null)}
                   onCookedRecipe={recordCookedRecipe}
                   onCooked={({ pantryItems, recentlyAdded, recipeTitle }) => {
@@ -937,6 +1022,7 @@ function App() {
                 <RecipeDetailsPage
                   recipe={selectedRecipe}
                   userId={userId}
+                  settings={settings}
                   onBack={() => setSelectedRecipe(null)}
                   onCookedRecipe={recordCookedRecipe}
                   onCooked={({ pantryItems, recentlyAdded, recipeTitle }) => {
@@ -1270,7 +1356,10 @@ function HomePage({
   const characters = useMemo(() => welcomeText.split(""), [welcomeText]);
   const resultCount = settings.quickRecipes ? 5 : 10;
   const ignorePantry = true;
+  const showSmartSuggestions = settings.smartSuggestions !== false;
+  const showIngredientInsights = settings.ingredientInsights !== false;
   const suggestionCacheKey = `jci_daily_suggestion_${userId || "guest"}`;
+  const suggestionNotificationKey = `jci_daily_suggestion_notice_${userId || "guest"}`;
 
   const toDayKey = () =>
     new Date().toLocaleDateString("en-CA", {
@@ -1418,7 +1507,12 @@ function HomePage({
   }, [online, userId, setPantryItems]);
 
   const loadDailySuggestion = async ({ forceRefresh = false } = {}) => {
-    if (!userId) return;
+    if (!userId || !showSmartSuggestions) {
+      setDailySuggestion(null);
+      setSuggestionError("");
+      setSuggestionLoading(false);
+      return;
+    }
 
     const today = toDayKey();
     let cachedCurrentIndex = 0;
@@ -1518,8 +1612,61 @@ function HomePage({
   };
 
   useEffect(() => {
+    if (!showSmartSuggestions) {
+      setDailySuggestion(null);
+      setSuggestionError("");
+      setSuggestionLoading(false);
+      return;
+    }
+
     loadDailySuggestion();
-  }, [userId]);
+  }, [userId, showSmartSuggestions]);
+
+  useEffect(() => {
+    if (
+      !showSmartSuggestions ||
+      !settings.notifications ||
+      !dailySuggestion ||
+      suggestionLoading
+    ) {
+      return;
+    }
+
+    const today = toDayKey();
+
+    try {
+      const cachedRaw = window.localStorage.getItem(suggestionNotificationKey);
+      if (cachedRaw) {
+        const cached = JSON.parse(cachedRaw);
+        if (cached?.date === today && cached?.recipeId === dailySuggestion.id) {
+          return;
+        }
+      }
+    } catch {
+      // Ignore cache parsing issues and continue.
+    }
+
+    const wasSent = sendBrowserNotification("Today's Just Cook It pick", {
+      body: `${dailySuggestion.title} is ready to cook.`,
+      closeAfterMs: 5000,
+    });
+
+    if (!wasSent) return;
+
+    window.localStorage.setItem(
+      suggestionNotificationKey,
+      JSON.stringify({
+        date: today,
+        recipeId: dailySuggestion.id,
+      }),
+    );
+  }, [
+    dailySuggestion,
+    settings.notifications,
+    showSmartSuggestions,
+    suggestionLoading,
+    suggestionNotificationKey,
+  ]);
 
   const parseIngredientDraft = (value) =>
     value
@@ -1535,6 +1682,8 @@ function HomePage({
   const hasIngredientDrivenSearch = buildSearchIngredients().length > 0;
 
   const renderRecipeMatchSummary = (recipe) => {
+    if (!showIngredientInsights) return null;
+
     const totalConsidered =
       (recipe.usedIngredientCount || 0) + (recipe.missedIngredientCount || 0);
 
@@ -1761,19 +1910,31 @@ function HomePage({
             type="button"
             className="clear-btn"
             onClick={() => loadDailySuggestion({ forceRefresh: true })}
-            disabled={suggestionLoading}
+            disabled={!showSmartSuggestions || suggestionLoading}
           >
             {suggestionLoading ? "Generating..." : "Generate new suggestion"}
           </button>
         </div>
 
-        {suggestionError ? <p className="error-text">{suggestionError}</p> : null}
+        {!showSmartSuggestions ? (
+          <p className="sync-line">
+            Turn on Smart suggestions in Settings to get daily pantry-aware
+            picks.
+          </p>
+        ) : null}
 
-        {!suggestionLoading && !dailySuggestion && !suggestionError ? (
+        {showSmartSuggestions && suggestionError ? (
+          <p className="error-text">{suggestionError}</p>
+        ) : null}
+
+        {showSmartSuggestions &&
+        !suggestionLoading &&
+        !dailySuggestion &&
+        !suggestionError ? (
           <p className="sync-line">No suggestion available right now.</p>
         ) : null}
 
-        {dailySuggestion ? (
+        {showSmartSuggestions && dailySuggestion ? (
           <ul className="recipe-list">
             <li className="recipe-card gradient-card recipe-card-layout">
               <div className="recipe-result-image-wrap">
@@ -1818,15 +1979,17 @@ function HomePage({
                   ⏱ {dailySuggestion.readyTime ?? "?"} min
                 </p>
 
-                <p className="ingredient-summary">
-                  <strong>
-                    Missing {dailySuggestion.missedIngredientCount || 0}
-                  </strong>{" "}
-                  ingredient(s):{" "}
-                  {dailySuggestion.missedIngredients?.length
-                    ? dailySuggestion.missedIngredients.join(", ")
-                    : "None"}
-                </p>
+                {showIngredientInsights ? (
+                  <p className="ingredient-summary">
+                    <strong>
+                      Missing {dailySuggestion.missedIngredientCount || 0}
+                    </strong>{" "}
+                    ingredient(s):{" "}
+                    {dailySuggestion.missedIngredients?.length
+                      ? dailySuggestion.missedIngredients.join(", ")
+                      : "None"}
+                  </p>
+                ) : null}
 
                 <button
                   type="button"
@@ -2092,6 +2255,7 @@ function HomePage({
 function RecipeDetailsPage({
   recipe,
   userId,
+  settings,
   onBack,
   onCookedRecipe,
   onCooked,
@@ -2155,6 +2319,14 @@ function RecipeDetailsPage({
     setActiveGuideStep(0);
     setCompletedGuideSteps([]);
   }, [recipe.id]);
+
+  useEffect(() => {
+    if (!settings.autoStartGuide || guideSteps.length === 0) return;
+
+    setGuideMode(true);
+    setActiveGuideStep(0);
+    setCompletedGuideSteps([]);
+  }, [guideSteps.length, recipe.id, settings.autoStartGuide]);
 
   useEffect(() => {
     if (!celebrate) return undefined;
@@ -2279,6 +2451,11 @@ function RecipeDetailsPage({
       onCookedRecipe?.(cookedRecipe);
       setCelebrate(true);
       playSuccessChime();
+      if (settings.notifications) {
+        sendBrowserNotification("Recipe marked as cooked", {
+          body: `${source.title || recipe.title} was added to your cooked history.`,
+        });
+      }
       onCooked?.({
         pantryItems: mergeIngredientLists(
           Array.isArray(payload.ingredients) ? payload.ingredients : [],
@@ -2362,12 +2539,14 @@ function RecipeDetailsPage({
           <p className="recipe-meta">⏱ {details.readyInMinutes ?? "?"} min</p>
 
           <h3>Ingredients</h3>
+          <p className="sync-line">
+            Showing {settings.units === "imperial" ? "imperial" : "metric"}{" "}
+            measurements.
+          </p>
           <ul className="recipe-detail-list">
             {(details.extendedIngredients || []).map((ingredient, index) => (
               <li key={ingredient.id ?? `${ingredient.name}-${index}`}>
-                {ingredient.original ||
-                  ingredient.originalName ||
-                  ingredient.name}
+                {formatIngredientForUnits(ingredient, settings.units)}
               </li>
             ))}
           </ul>
@@ -3118,6 +3297,13 @@ function ProfilePage({
   }, [userId]);
 
   useEffect(() => {
+    if (!settings.smartSuggestions) {
+      setRecipeIdeas([]);
+      setIdeasError("");
+      setIdeasLoading(false);
+      return;
+    }
+
     if (pantryItems.length === 0) {
       setRecipeIdeas([]);
       setIdeasError("");
@@ -3174,7 +3360,7 @@ function ProfilePage({
     return () => {
       cancelled = true;
     };
-  }, [pantryItems, settings.quickRecipes, userId]);
+  }, [pantryItems, settings.quickRecipes, settings.smartSuggestions, userId]);
 
   const updateDietary = (name) => {
     setProfile((current) => ({
@@ -3304,14 +3490,31 @@ function ProfilePage({
             <span className="profile-inline-count">{recipeIdeas.length}</span>
           </div>
 
-          {ideasLoading ? <p className="sync-line">Finding ideas...</p> : null}
-          {ideasError ? <p className="error-text">{ideasError}</p> : null}
+          {!settings.smartSuggestions ? (
+            <p className="sync-line">
+              Turn on Smart suggestions in Settings to get personalized pantry
+              ideas here.
+            </p>
+          ) : null}
 
-          {!ideasLoading && !ideasError && pantryItems.length === 0 ? (
+          {settings.smartSuggestions && ideasLoading ? (
+            <p className="sync-line">Finding ideas...</p>
+          ) : null}
+          {settings.smartSuggestions && ideasError ? (
+            <p className="error-text">{ideasError}</p>
+          ) : null}
+
+          {settings.smartSuggestions &&
+          !ideasLoading &&
+          !ideasError &&
+          pantryItems.length === 0 ? (
             <p className="sync-line">Cook once to unlock this.</p>
           ) : null}
 
-          {!ideasLoading && !ideasError && pantryItems.length > 0 ? (
+          {settings.smartSuggestions &&
+          !ideasLoading &&
+          !ideasError &&
+          pantryItems.length > 0 ? (
             recipeIdeas.length > 0 ? (
               <ul className="profile-mini-list">
                 {recipeIdeas.slice(0, 4).map((recipe) => (
@@ -3401,110 +3604,307 @@ function ProfilePage({
 }
 
 function SettingsPage({ settings, setSettings, onSave, syncMessage, saving }) {
-  const requestNotificationPermission = async () => {
-    if (!("Notification" in window)) return;
-    if (Notification.permission === "default") {
-      await Notification.requestPermission();
+  const [notificationState, setNotificationState] = useState(() =>
+    getNotificationPermissionState(),
+  );
+  const [notificationFeedback, setNotificationFeedback] = useState("");
+
+  useEffect(() => {
+    const currentState = getNotificationPermissionState();
+    setNotificationState(currentState);
+
+    if (
+      settings.notifications &&
+      (currentState === "denied" || currentState === "unsupported")
+    ) {
+      updateSetting("notifications", false);
     }
-    if (Notification.permission === "granted") {
-      new Notification("Just Cook It", {
-        body: "Progress nudges are enabled.",
-      });
-    }
+  }, []);
+
+  const updateSetting = (key, value) => {
+    setSettings((current) => ({
+      ...current,
+      [key]: value,
+    }));
   };
+
+  const toggleSetting = (key) => {
+    setSettings((current) => ({
+      ...current,
+      [key]: !current[key],
+    }));
+  };
+
+  const handleNotificationToggle = async () => {
+    if (settings.notifications) {
+      updateSetting("notifications", false);
+      setNotificationFeedback("Browser notifications paused.");
+      return;
+    }
+
+    const permission = await requestBrowserNotificationPermission();
+    setNotificationState(permission);
+
+    if (permission === "granted") {
+      updateSetting("notifications", true);
+      setNotificationFeedback(
+        "Notifications are on for smart suggestions and cooking updates.",
+      );
+      sendBrowserNotification("Just Cook It notifications enabled", {
+        body: "We’ll let you know when fresh recipe ideas are ready.",
+      });
+      return;
+    }
+
+    updateSetting("notifications", false);
+
+    if (permission === "denied") {
+      setNotificationFeedback(
+        "Notifications are blocked in your browser. Allow them to turn this on.",
+      );
+      return;
+    }
+
+    if (permission === "unsupported") {
+      setNotificationFeedback(
+        "This browser does not support notifications on this page.",
+      );
+      return;
+    }
+
+    setNotificationFeedback(
+      "Notification permission was dismissed, so notifications stayed off.",
+    );
+  };
+
+  const notificationStatusLabel = {
+    granted: "Allowed",
+    denied: "Blocked",
+    default: "Ask first",
+    unsupported: "Unsupported",
+  }[notificationState];
+
+  const activeSmartCount = [
+    settings.smartSuggestions,
+    settings.autoStartGuide,
+    settings.ingredientInsights,
+  ].filter(Boolean).length;
 
   return (
     <>
       <h2 className="section-title">Settings</h2>
       <p className="sync-line">{syncMessage}</p>
 
-      <section className="card gradient-card settings-card">
-        <h3>Experience</h3>
+      <section className="card gradient-card settings-card settings-hero-card">
+        <div className="settings-hero-top">
+          <div>
+            <p className="profile-kicker">Kitchen controls</p>
+            <h3>Your cooking defaults, tuned once.</h3>
+            <p className="sync-line settings-hero-note">
+              Notifications, units, and smart recipe behavior all update from
+              here.
+            </p>
+          </div>
 
-        <div className="interactive-row">
-          <span>Enable notifications</span>
-          <button
-            type="button"
-            className={`toggle-switch ${settings.notifications ? "on" : ""}`}
-            onClick={async () => {
-              setSettings((current) => ({
-                ...current,
-                notifications: !current.notifications,
-              }));
-              await requestNotificationPermission();
-            }}
-          >
-            {settings.notifications ? "On" : "Off"}
-          </button>
-        </div>
-
-        <div className="interactive-row">
-          <span>Show quick recipes first</span>
-          <button
-            type="button"
-            className={`toggle-switch ${settings.quickRecipes ? "on" : ""}`}
-            onClick={() =>
-              setSettings((current) => ({
-                ...current,
-                quickRecipes: !current.quickRecipes,
-              }))
-            }
-          >
-            {settings.quickRecipes ? "On" : "Off"}
-          </button>
-        </div>
-
-        <label htmlFor="units">Units</label>
-        <select
-          id="units"
-          value={settings.units}
-          onChange={(event) =>
-            setSettings((current) => ({
-              ...current,
-              units: event.target.value,
-            }))
-          }
-        >
-          <option value="metric">Metric</option>
-          <option value="imperial">Imperial</option>
-        </select>
-
-        <div className="interactive-row">
-          <span>Allow usage analytics</span>
-          <button
-            type="button"
-            className={`toggle-switch ${
-              settings.allowUsageAnalytics ? "on" : ""
-            }`}
-            onClick={() =>
-              setSettings((current) => ({
-                ...current,
-                allowUsageAnalytics: !current.allowUsageAnalytics,
-              }))
-            }
-          >
-            {settings.allowUsageAnalytics ? "On" : "Off"}
-          </button>
-        </div>
-
-        <div className="interactive-row">
-          <span>Progress nudges</span>
-          <button
-            type="button"
-            className={`toggle-switch ${
-              settings.allowProgressNudges ? "on" : ""
-            }`}
-            onClick={() =>
-              setSettings((current) => ({
-                ...current,
-                allowProgressNudges: !current.allowProgressNudges,
-              }))
-            }
-          >
-            {settings.allowProgressNudges ? "On" : "Off"}
-          </button>
+          <div className="settings-summary-grid">
+            <div className="profile-stat-tile">
+              <span className="profile-stat-label">Notifications</span>
+              <strong>{settings.notifications ? "On" : "Off"}</strong>
+              <span className="pantry-count-label">{notificationStatusLabel}</span>
+            </div>
+            <div className="profile-stat-tile">
+              <span className="profile-stat-label">Units</span>
+              <strong>
+                {settings.units === "imperial" ? "Imperial" : "Metric"}
+              </strong>
+              <span className="pantry-count-label">Recipe ingredients</span>
+            </div>
+            <div className="profile-stat-tile">
+              <span className="profile-stat-label">Smart features</span>
+              <strong>{activeSmartCount}/3</strong>
+              <span className="pantry-count-label">Active now</span>
+            </div>
+          </div>
         </div>
       </section>
+
+      <div className="settings-grid">
+        <section className="card gradient-card settings-card">
+          <div className="settings-card-head">
+            <div>
+              <p className="profile-kicker">Experience</p>
+              <h3>Everyday preferences</h3>
+            </div>
+          </div>
+
+          <div className="setting-group">
+            <div className="setting-row">
+              <div className="setting-copy">
+                <h4>Enable notifications</h4>
+                <p>
+                  Get browser alerts for smart daily suggestions and when a
+                  recipe is marked cooked.
+                </p>
+              </div>
+
+              <div className="setting-actions">
+                <span className="settings-badge">{notificationStatusLabel}</span>
+                {settings.notifications && notificationState === "granted" ? (
+                  <button
+                    type="button"
+                    className="secondary-btn"
+                    onClick={() =>
+                      sendBrowserNotification("Just Cook It test", {
+                        body: "Notifications are working.",
+                      })
+                    }
+                  >
+                    Send test
+                  </button>
+                ) : null}
+                <button
+                  type="button"
+                  className={`toggle-switch ${settings.notifications ? "on" : ""}`}
+                  onClick={handleNotificationToggle}
+                >
+                  {settings.notifications ? "On" : "Off"}
+                </button>
+              </div>
+            </div>
+
+            {notificationFeedback ? (
+              <p className="sync-line settings-inline-note">
+                {notificationFeedback}
+              </p>
+            ) : null}
+
+            <div className="setting-row">
+              <div className="setting-copy">
+                <h4>Show quick recipes first</h4>
+                <p>
+                  Keep search results and profile suggestions focused on faster
+                  meals.
+                </p>
+              </div>
+
+              <div className="setting-actions">
+                <button
+                  type="button"
+                  className={`toggle-switch ${settings.quickRecipes ? "on" : ""}`}
+                  onClick={() => toggleSetting("quickRecipes")}
+                >
+                  {settings.quickRecipes ? "On" : "Off"}
+                </button>
+              </div>
+            </div>
+
+            <div className="setting-row setting-row-stack">
+              <div className="setting-copy">
+                <h4>Recipe measurements</h4>
+                <p>Choose how ingredient amounts are shown inside recipes.</p>
+              </div>
+
+              <div className="preference-grid settings-choice-grid">
+                <button
+                  type="button"
+                  className={`toggle-tile ${
+                    settings.units === "metric" ? "on" : ""
+                  }`}
+                  onClick={() => updateSetting("units", "metric")}
+                >
+                  Metric
+                </button>
+                <button
+                  type="button"
+                  className={`toggle-tile ${
+                    settings.units === "imperial" ? "on" : ""
+                  }`}
+                  onClick={() => updateSetting("units", "imperial")}
+                >
+                  Imperial
+                </button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section className="card gradient-card settings-card">
+          <div className="settings-card-head">
+            <div>
+              <p className="profile-kicker">Smart kitchen</p>
+              <h3>Helpful automation</h3>
+            </div>
+          </div>
+
+          <div className="setting-group">
+            <div className="setting-row">
+              <div className="setting-copy">
+                <h4>Smart suggestions</h4>
+                <p>
+                  Personalize daily picks and the Profile page’s Next recipes
+                  from your pantry and cooking history.
+                </p>
+              </div>
+
+              <div className="setting-actions">
+                <button
+                  type="button"
+                  className={`toggle-switch ${
+                    settings.smartSuggestions ? "on" : ""
+                  }`}
+                  onClick={() => toggleSetting("smartSuggestions")}
+                >
+                  {settings.smartSuggestions ? "On" : "Off"}
+                </button>
+              </div>
+            </div>
+
+            <div className="setting-row">
+              <div className="setting-copy">
+                <h4>Auto-start guided cooking</h4>
+                <p>
+                  Open recipe details directly in step-by-step guide mode when
+                  instructions are available.
+                </p>
+              </div>
+
+              <div className="setting-actions">
+                <button
+                  type="button"
+                  className={`toggle-switch ${
+                    settings.autoStartGuide ? "on" : ""
+                  }`}
+                  onClick={() => toggleSetting("autoStartGuide")}
+                >
+                  {settings.autoStartGuide ? "On" : "Off"}
+                </button>
+              </div>
+            </div>
+
+            <div className="setting-row">
+              <div className="setting-copy">
+                <h4>Ingredient match insights</h4>
+                <p>
+                  Show what you already have and what is missing directly on
+                  recipe cards and smart picks.
+                </p>
+              </div>
+
+              <div className="setting-actions">
+                <button
+                  type="button"
+                  className={`toggle-switch ${
+                    settings.ingredientInsights ? "on" : ""
+                  }`}
+                  onClick={() => toggleSetting("ingredientInsights")}
+                >
+                  {settings.ingredientInsights ? "On" : "Off"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
 
       <button
         className="save-btn"

@@ -403,7 +403,14 @@ def save_user_profile(payload: dict[str, Any]):
 
 def get_user_settings(user_id: str):
     # Settings live inside the shared state blob, with defaults filling gaps for first-run users.
-    defaults = {"quickRecipes": True, "notifications": True, "units": "metric"}
+    defaults = {
+        "quickRecipes": True,
+        "notifications": False,
+        "units": "metric",
+        "smartSuggestions": True,
+        "autoStartGuide": False,
+        "ingredientInsights": True,
+    }
     try:
         state_row = _safe_first(
             supabase.table(settings.supabase_state_table).select("*").eq("user_id", user_id).limit(1).execute().data
@@ -427,10 +434,11 @@ def save_user_settings(payload: dict[str, Any]):
         state_blob = _get_state_blob(current_state)
         state_blob["settings"] = {
             "quickRecipes": bool(payload.get("quickRecipes", True)),
-            "notifications": bool(payload.get("notifications", True)),
-            "units": payload.get("units", "metric"),
-            "allowUsageAnalytics": bool(payload.get("allowUsageAnalytics", False)),
-            "allowProgressNudges": bool(payload.get("allowProgressNudges", True)),
+            "notifications": bool(payload.get("notifications", False)),
+            "units": payload.get("units", "metric") if payload.get("units") in {"metric", "imperial"} else "metric",
+            "smartSuggestions": bool(payload.get("smartSuggestions", True)),
+            "autoStartGuide": bool(payload.get("autoStartGuide", False)),
+            "ingredientInsights": bool(payload.get("ingredientInsights", True)),
         }
         supabase.table(settings.supabase_state_table).upsert(
             {"user_id": user_id, "state_json": state_blob},

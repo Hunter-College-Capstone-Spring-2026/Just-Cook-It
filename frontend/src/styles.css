@@ -1416,6 +1416,108 @@ button:focus-visible {
   box-shadow: 0 8px 14px rgba(214, 111, 75, 0.26);
 }
 
+.settings-hero-card {
+  background:
+    radial-gradient(circle at top right, rgba(255, 229, 205, 0.92), transparent 34%),
+    linear-gradient(135deg, rgba(255, 248, 242, 0.99), rgba(255, 241, 232, 0.96));
+}
+
+.settings-hero-top,
+.settings-card-head,
+.setting-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+}
+
+.settings-hero-note,
+.settings-inline-note {
+  margin-bottom: 0;
+}
+
+.settings-summary-grid,
+.settings-grid {
+  display: grid;
+  gap: 1rem;
+}
+
+.settings-summary-grid {
+  min-width: 320px;
+  grid-template-columns: repeat(3, minmax(95px, 1fr));
+  gap: 0.75rem;
+}
+
+.settings-grid {
+  margin-top: 1rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
+}
+
+.settings-card-head h3,
+.setting-copy h4 {
+  margin: 0;
+}
+
+.setting-group {
+  display: grid;
+  gap: 0.25rem;
+}
+
+.setting-row {
+  padding: 1rem 0;
+  border-top: 1px solid rgba(214, 111, 75, 0.14);
+}
+
+.setting-group .setting-row:first-child {
+  padding-top: 0;
+  border-top: 0;
+}
+
+.setting-row-stack {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.setting-copy {
+  min-width: 0;
+  display: grid;
+  gap: 0.2rem;
+}
+
+.setting-copy p {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 0.94rem;
+  line-height: 1.45;
+}
+
+.setting-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.55rem;
+}
+
+.settings-choice-grid {
+  margin: 0;
+  max-width: 340px;
+}
+
+.settings-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.34rem 0.72rem;
+  border-radius: 999px;
+  background: rgba(255, 243, 233, 0.96);
+  border: 1px solid rgba(214, 111, 75, 0.16);
+  color: #7e3c21;
+  font-size: 0.82rem;
+  white-space: nowrap;
+}
+
 .save-btn {
   margin-top: 0.2rem;
   max-width: 260px;
@@ -1767,6 +1869,30 @@ button:focus-visible {
   .interactive-row {
     flex-direction: column;
     align-items: flex-start;
+  }
+
+  .settings-hero-top,
+  .setting-row {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .settings-summary-grid,
+  .settings-grid {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .settings-summary-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .settings-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .setting-actions {
+    justify-content: flex-start;
   }
 
   .profile-grid {
