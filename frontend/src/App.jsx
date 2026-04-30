@@ -209,7 +209,11 @@ function App() {
 
   const handleSignOut = async () => {
     try {
-      await fetch(`${API_BASE_URL}/api/auth/signout`, { method: "POST" });
+      await fetch(`${API_BASE_URL}/api/auth/signout`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: authUser?.userId }),
+      });
     } catch {
       // ignore network errors on signout
     }
@@ -217,11 +221,7 @@ function App() {
     setProfile(defaultProfile);
     setActivePage("signin");
     setSelectedRecipe(null);
-    setPantryLanding({
-      pantryItems: [],
-      recentlyAdded: [],
-      recipeTitle: "",
-    });
+    setPantryLanding({ pantryItems: [], recentlyAdded: "", recipeTitle: "" });
   };
 
   const handlePageChange = (pageId, options = {}) => {
