@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Body, HTTPException
 
-from app.models.auth import SignInRequest, SignUpRequest
+from app.models.auth import SignInRequest, SignUpRequest, SignOutRequest
 from app.services.supabase_service import sign_in, sign_out, sign_up
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
@@ -47,9 +47,9 @@ def signin(payload: SignInRequest):
 
 
 @router.post("/signout")
-def signout():
+def signout(payload: SignOutRequest = Body(default=SignOutRequest())):
     try:
-        result = sign_out(jwt="")
+        result = sign_out(user_id=payload.userId)
         return {"ok": True, **result}
     except Exception as exc:
         raise HTTPException(status_code=400, detail=str(exc))

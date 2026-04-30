@@ -257,9 +257,16 @@ def sign_in(email: str, password: str):
     })
     return response
 
-def sign_out(jwt: str):
-    # Pass the user's token so Supabase invalidates their session
-    supabase.auth.sign_out()
+def sign_out(user_id: str | None = None):
+    try:
+        if user_id:
+            # Signs out all sessions for this user across all devices
+            service_supabase.auth.admin.sign_out(user_id)
+        else:
+            supabase.auth.sign_out()
+    except Exception:
+        # Best-effort — frontend clears local state regardless
+        pass
     return {"message": "Signed out"}
 
 
