@@ -175,6 +175,7 @@ def toggle_saved_recipe(user_id: str, recipe: dict[str, Any]) -> dict[str, Any]:
             is_saved = True
 
     except Exception as exc:
+        print(f"[ERROR] UserRecipe cooked write failed for user={user_id} recipe={recipe.get('recipeId')}: {exc}")
         warning = f"toggle save failed: {exc}"
 
     return {"saved": is_saved, "warning": warning}
@@ -392,21 +393,19 @@ def save_user_profile(payload: dict[str, Any]):
     except Exception as exc:
         warning = f"user table save skipped: {exc}"
 
-    dietary_names = _normalize_dietary_names(payload.get("dietary", {}))
-    if dietary_names:
-        if not _sync_user_dietary_restrictions(user_id, dietary_names):
-            warning = f"{warning}; user dietary sync failed" if warning else "user dietary sync failed"
-    else:
-        # If no dietary information provided, clear recorded values to avoid stale data.
-        try:
-            supabase.table(settings.supabase_user_dietary_table).delete().eq("user_id", user_id).execute()
-        except Exception as exc:
-            warning = f"{warning}; user dietary clear failed: {exc}" if warning else f"user dietary clear failed: {exc}"
-
-    # Removed legacy state table save since dietary now uses dedicated join table.
+    # Only sync dietary if the key is explicitly present in the payload
+    if "dietary" in payload:
+        dietary_names = _normalize_dietary_names(payload["dietary"])
+        if dietary_names:
+            if not _sync_user_dietary_restrictions(user_id, dietary_names):
+                warning = (warning + "; dietary sync failed") if warning else "dietary sync failed"
+        else:
+            try:
+                supabase.table(settings.supabase_user_dietary_table).delete().eq("user_id", user_id).execute()
+            except Exception as exc:
+                warning = (warning + f"; dietary clear failed: {exc}") if warning else f"dietary clear failed: {exc}"
 
     return {"saved": True, "warning": warning}
-
 
 def get_user_settings(user_id: str):
     # Settings live inside the shared state blob, with defaults filling gaps for first-run users.
@@ -489,31 +488,10 @@ def save_user_cooked_recipe(payload: dict[str, Any]):
                 "user_recipe_cooked_at": recipe.get("cookedAt") or _now(),
             }).execute()
     except Exception as exc:
+        print(f"[ERROR] UserRecipe cooked write failed: {exc}")
         warning = f"UserRecipe write skipped: {exc}"
 
-    #  Legacy state blob (keep until frontend migrates) ─── should be done at this point but check again to be sure
-    recipes: list[dict[str, Any]] = [recipe]
-    try:
-        current_state = _safe_first(
-            supabase.table(settings.supabase_state_table).select("*").eq("user_id", user_id).limit(1).execute().data
-        )
-        state_blob = _get_state_blob(current_state)
-        existing_list = _extract_cooked_recipes(state_blob)
-        deduped: dict[tuple[int, str], dict[str, Any]] = {}
-        for item in [recipe, *existing_list]:
-            key = (item["recipeId"], item.get("cookedAt", ""))
-            if key not in deduped:
-                deduped[key] = item
-        recipes = sorted(deduped.values(), key=lambda x: x.get("cookedAt", ""), reverse=True)[:30]
-        state_blob["cookedRecipes"] = recipes
-        supabase.table(settings.supabase_state_table).upsert(
-            {"user_id": user_id, "state_json": state_blob}, on_conflict="user_id"
-        ).execute()
-    except Exception as exc:
-        w2 = f"state blob write skipped: {exc}"
-        warning = f"{warning}; {w2}" if warning else w2
-
-    return {"saved": True, "warning": warning, "recipes": recipes}
+    return {"saved": True, "warning": warning, "recipes": [recipe]}
 
 
 def clear_user_cooked_recipes(user_id: str):
