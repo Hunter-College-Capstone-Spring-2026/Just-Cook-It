@@ -183,7 +183,7 @@ def toggle_saved_recipe(user_id: str, recipe: dict[str, Any]) -> dict[str, Any]:
 def get_user_saved_recipes(user_id: str) -> list[dict[str, Any]]:
     """
     Returns all recipes the user has bookmarked (saved_at IS NOT NULL),
-    joined with Recipe metadata — no extra Spoonacular calls needed.
+    joined with Recipe metadata; no extra Spoonacular calls are needed.
     """
     try:
         rows = (
