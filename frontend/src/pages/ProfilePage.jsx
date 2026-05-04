@@ -75,13 +75,6 @@ export default function ProfilePage({
   }, [userId]);
 
   useEffect(() => {
-    if (!settings.smartSuggestions) {
-      setRecipeIdeas([]);
-      setIdeasError("");
-      setIdeasLoading(false);
-      return;
-    }
-
     if (pantryItems.length === 0) {
       setRecipeIdeas([]);
       setIdeasError("");
@@ -138,7 +131,7 @@ export default function ProfilePage({
     return () => {
       cancelled = true;
     };
-  }, [pantryItems, settings.quickRecipes, settings.smartSuggestions, userId]);
+  }, [pantryItems, settings.quickRecipes, userId]);
 
   const updateDietary = (name) => {
     setProfile((current) => ({
@@ -268,31 +261,14 @@ export default function ProfilePage({
             <span className="profile-inline-count">{recipeIdeas.length}</span>
           </div>
 
-          {!settings.smartSuggestions ? (
-            <p className="sync-line">
-              Turn on Smart suggestions in Settings to get personalized pantry
-              ideas here.
-            </p>
-          ) : null}
+          {ideasLoading ? <p className="sync-line">Finding ideas...</p> : null}
+          {ideasError ? <p className="error-text">{ideasError}</p> : null}
 
-          {settings.smartSuggestions && ideasLoading ? (
-            <p className="sync-line">Finding ideas...</p>
-          ) : null}
-          {settings.smartSuggestions && ideasError ? (
-            <p className="error-text">{ideasError}</p>
-          ) : null}
-
-          {settings.smartSuggestions &&
-          !ideasLoading &&
-          !ideasError &&
-          pantryItems.length === 0 ? (
+          {!ideasLoading && !ideasError && pantryItems.length === 0 ? (
             <p className="sync-line">Cook once to unlock this.</p>
           ) : null}
 
-          {settings.smartSuggestions &&
-          !ideasLoading &&
-          !ideasError &&
-          pantryItems.length > 0 ? (
+          {!ideasLoading && !ideasError && pantryItems.length > 0 ? (
             recipeIdeas.length > 0 ? (
               <ul className="profile-mini-list">
                 {recipeIdeas.slice(0, 4).map((recipe) => (

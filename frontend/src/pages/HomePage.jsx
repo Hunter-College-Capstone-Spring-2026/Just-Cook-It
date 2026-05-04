@@ -47,8 +47,6 @@ export default function HomePage({
   const characters = useMemo(() => welcomeText.split(""), [welcomeText]);
   const resultCount = settings.quickRecipes ? 5 : 10;
   const ignorePantry = true;
-  const showSmartSuggestions = settings.smartSuggestions !== false;
-  const showIngredientInsights = settings.ingredientInsights !== false;
   const suggestionCacheKey = `jci_daily_suggestion_${userId || "guest"}`;
   const suggestionNotificationKey = `jci_daily_suggestion_notice_${userId || "guest"}`;
 
@@ -198,7 +196,7 @@ export default function HomePage({
   }, [online, userId, setPantryItems]);
 
   const loadDailySuggestion = async ({ forceRefresh = false } = {}) => {
-    if (!userId || !showSmartSuggestions) {
+    if (!userId) {
       setDailySuggestion(null);
       setSuggestionError("");
       setSuggestionLoading(false);
@@ -303,19 +301,11 @@ export default function HomePage({
   };
 
   useEffect(() => {
-    if (!showSmartSuggestions) {
-      setDailySuggestion(null);
-      setSuggestionError("");
-      setSuggestionLoading(false);
-      return;
-    }
-
     loadDailySuggestion();
-  }, [userId, showSmartSuggestions]);
+  }, [userId]);
 
   useEffect(() => {
     if (
-      !showSmartSuggestions ||
       !settings.notifications ||
       !dailySuggestion ||
       suggestionLoading
@@ -354,7 +344,6 @@ export default function HomePage({
   }, [
     dailySuggestion,
     settings.notifications,
-    showSmartSuggestions,
     suggestionLoading,
     suggestionNotificationKey,
   ]);
@@ -373,8 +362,6 @@ export default function HomePage({
   const hasIngredientDrivenSearch = buildSearchIngredients().length > 0;
 
   const renderRecipeMatchSummary = (recipe) => {
-    if (!showIngredientInsights) return null;
-
     const totalConsidered =
       (recipe.usedIngredientCount || 0) + (recipe.missedIngredientCount || 0);
 
@@ -601,31 +588,19 @@ export default function HomePage({
             type="button"
             className="clear-btn"
             onClick={() => loadDailySuggestion({ forceRefresh: true })}
-            disabled={!showSmartSuggestions || suggestionLoading}
+            disabled={suggestionLoading}
           >
             {suggestionLoading ? "Generating..." : "Generate new suggestion"}
           </button>
         </div>
 
-        {!showSmartSuggestions ? (
-          <p className="sync-line">
-            Turn on Smart suggestions in Settings to get daily pantry-aware
-            picks.
-          </p>
-        ) : null}
+        {suggestionError ? <p className="error-text">{suggestionError}</p> : null}
 
-        {showSmartSuggestions && suggestionError ? (
-          <p className="error-text">{suggestionError}</p>
-        ) : null}
-
-        {showSmartSuggestions &&
-        !suggestionLoading &&
-        !dailySuggestion &&
-        !suggestionError ? (
+        {!suggestionLoading && !dailySuggestion && !suggestionError ? (
           <p className="sync-line">No suggestion available right now.</p>
         ) : null}
 
-        {showSmartSuggestions && dailySuggestion ? (
+        {dailySuggestion ? (
           <ul className="recipe-list">
             <li className="recipe-card gradient-card recipe-card-layout">
               <div className="recipe-result-image-wrap">
@@ -670,17 +645,15 @@ export default function HomePage({
                   ⏱ {dailySuggestion.readyTime ?? "?"} min
                 </p>
 
-                {showIngredientInsights ? (
-                  <p className="ingredient-summary">
-                    <strong>
-                      Missing {dailySuggestion.missedIngredientCount || 0}
-                    </strong>{" "}
-                    ingredient(s):{" "}
-                    {dailySuggestion.missedIngredients?.length
-                      ? dailySuggestion.missedIngredients.join(", ")
-                      : "None"}
-                  </p>
-                ) : null}
+                <p className="ingredient-summary">
+                  <strong>
+                    Missing {dailySuggestion.missedIngredientCount || 0}
+                  </strong>{" "}
+                  ingredient(s):{" "}
+                  {dailySuggestion.missedIngredients?.length
+                    ? dailySuggestion.missedIngredients.join(", ")
+                    : "None"}
+                </p>
 
                 <button
                   type="button"

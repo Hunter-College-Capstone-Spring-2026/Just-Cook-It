@@ -57,7 +57,7 @@ export default function SettingsPage({
     if (permission === "granted") {
       updateSetting("notifications", true);
       setNotificationFeedback(
-        "Notifications are on for smart suggestions and cooking updates.",
+        "Notifications are on for daily suggestions and cooking updates.",
       );
       sendBrowserNotification("Just Cook It notifications enabled", {
         body: "We’ll let you know when fresh recipe ideas are ready.",
@@ -93,12 +93,6 @@ export default function SettingsPage({
     unsupported: "Unsupported",
   }[notificationState];
 
-  const totalSmartFeatures = 2;
-  const activeSmartCount = [
-    settings.smartSuggestions,
-    settings.ingredientInsights,
-  ].filter(Boolean).length;
-
   return (
     <>
       <h2 className="section-title">Settings</h2>
@@ -110,7 +104,7 @@ export default function SettingsPage({
             <p className="profile-kicker">Kitchen controls</p>
             <h3>Your cooking defaults, tuned once.</h3>
             <p className="sync-line settings-hero-note">
-              Notifications, units, and smart recipe behavior all update from
+              Notifications, recipe speed, and measurements all update from
               here.
             </p>
           </div>
@@ -127,11 +121,6 @@ export default function SettingsPage({
                 {settings.units === "imperial" ? "Imperial" : "Metric"}
               </strong>
               <span className="pantry-count-label">Recipe ingredients</span>
-            </div>
-            <div className="profile-stat-tile">
-              <span className="profile-stat-label">Smart features</span>
-              <strong>{activeSmartCount}/{totalSmartFeatures}</strong>
-              <span className="pantry-count-label">Active now</span>
             </div>
           </div>
         </div>
@@ -151,8 +140,8 @@ export default function SettingsPage({
               <div className="setting-copy">
                 <h4>Enable notifications</h4>
                 <p>
-                  Get browser alerts for smart daily suggestions and when a
-                  recipe is marked cooked.
+                  Get browser alerts for daily recipe suggestions and when a
+                  recipe is marked as cooked.
                 </p>
               </div>
 
@@ -237,60 +226,6 @@ export default function SettingsPage({
           </div>
         </section>
 
-        <section className="card gradient-card settings-card">
-          <div className="settings-card-head">
-            <div>
-              <p className="profile-kicker">Smart kitchen</p>
-              <h3>Helpful automation</h3>
-            </div>
-          </div>
-
-          <div className="setting-group">
-            <div className="setting-row">
-              <div className="setting-copy">
-                <h4>Smart suggestions</h4>
-                <p>
-                  Personalize daily picks and the Profile page’s Next recipes
-                  from your pantry and cooking history.
-                </p>
-              </div>
-
-              <div className="setting-actions">
-                <button
-                  type="button"
-                  className={`toggle-switch ${
-                    settings.smartSuggestions ? "on" : ""
-                  }`}
-                  onClick={() => toggleSetting("smartSuggestions")}
-                >
-                  {settings.smartSuggestions ? "On" : "Off"}
-                </button>
-              </div>
-            </div>
-
-            <div className="setting-row">
-              <div className="setting-copy">
-                <h4>Ingredient match insights</h4>
-                <p>
-                  Show what you already have and what is missing directly on
-                  recipe cards and smart picks.
-                </p>
-              </div>
-
-              <div className="setting-actions">
-                <button
-                  type="button"
-                  className={`toggle-switch ${
-                    settings.ingredientInsights ? "on" : ""
-                  }`}
-                  onClick={() => toggleSetting("ingredientInsights")}
-                >
-                  {settings.ingredientInsights ? "On" : "Off"}
-                </button>
-              </div>
-            </div>
-          </div>
-        </section>
       </div>
 
       <button

@@ -407,8 +407,6 @@ def get_user_settings(user_id: str):
         "quickRecipes": True,
         "notifications": False,
         "units": "metric",
-        "smartSuggestions": True,
-        "ingredientInsights": True,
     }
     try:
         state_row = _safe_first(
@@ -439,8 +437,6 @@ def save_user_settings(payload: dict[str, Any]):
             "quickRecipes": bool(payload.get("quickRecipes", True)),
             "notifications": bool(payload.get("notifications", False)),
             "units": payload.get("units", "metric") if payload.get("units") in {"metric", "imperial"} else "metric",
-            "smartSuggestions": bool(payload.get("smartSuggestions", True)),
-            "ingredientInsights": bool(payload.get("ingredientInsights", True)),
         }
         supabase.table(settings.supabase_state_table).upsert(
             {"user_id": user_id, "state_json": state_blob},

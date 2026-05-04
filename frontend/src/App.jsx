@@ -90,12 +90,19 @@ function App() {
     setSettings((current) => {
       if (
         !current ||
-        !Object.prototype.hasOwnProperty.call(current, "autoStartGuide")
+        !["autoStartGuide", "smartSuggestions", "ingredientInsights"].some(
+          (key) => Object.prototype.hasOwnProperty.call(current, key),
+        )
       ) {
         return current;
       }
 
-      const { autoStartGuide: _removed, ...rest } = current;
+      const {
+        autoStartGuide: _removedGuide,
+        smartSuggestions: _removedSuggestions,
+        ingredientInsights: _removedInsights,
+        ...rest
+      } = current;
       return { ...defaultSettings, ...rest };
     });
   }, [setSettings]);
@@ -139,7 +146,12 @@ function App() {
           const settingsPayload = await settingsResp.json();
           if (isMounted) {
             setSettings((current) => {
-              const { autoStartGuide: _removed, ...rest } = current || {};
+              const {
+                autoStartGuide: _removedGuide,
+                smartSuggestions: _removedSuggestions,
+                ingredientInsights: _removedInsights,
+                ...rest
+              } = current || {};
               return {
                 ...defaultSettings,
                 ...rest,
