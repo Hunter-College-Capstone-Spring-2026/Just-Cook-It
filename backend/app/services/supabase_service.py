@@ -408,7 +408,6 @@ def get_user_settings(user_id: str):
         "notifications": False,
         "units": "metric",
         "smartSuggestions": True,
-        "autoStartGuide": False,
         "ingredientInsights": True,
     }
     try:
@@ -416,7 +415,11 @@ def get_user_settings(user_id: str):
             supabase.table(settings.supabase_state_table).select("*").eq("user_id", user_id).limit(1).execute().data
         )
         state_blob = _get_state_blob(state_row)
-        return {**defaults, **_safe_dict(state_blob.get("settings", {}))}
+        stored_settings = _safe_dict(state_blob.get("settings", {}))
+        return {
+            key: stored_settings.get(key, value)
+            for key, value in defaults.items()
+        }
     except Exception:
         return defaults
 
@@ -437,7 +440,6 @@ def save_user_settings(payload: dict[str, Any]):
             "notifications": bool(payload.get("notifications", False)),
             "units": payload.get("units", "metric") if payload.get("units") in {"metric", "imperial"} else "metric",
             "smartSuggestions": bool(payload.get("smartSuggestions", True)),
-            "autoStartGuide": bool(payload.get("autoStartGuide", False)),
             "ingredientInsights": bool(payload.get("ingredientInsights", True)),
         }
         supabase.table(settings.supabase_state_table).upsert(

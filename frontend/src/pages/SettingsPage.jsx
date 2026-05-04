@@ -93,9 +93,9 @@ export default function SettingsPage({
     unsupported: "Unsupported",
   }[notificationState];
 
+  const totalSmartFeatures = 2;
   const activeSmartCount = [
     settings.smartSuggestions,
-    settings.autoStartGuide,
     settings.ingredientInsights,
   ].filter(Boolean).length;
 
@@ -130,7 +130,7 @@ export default function SettingsPage({
             </div>
             <div className="profile-stat-tile">
               <span className="profile-stat-label">Smart features</span>
-              <strong>{activeSmartCount}/3</strong>
+              <strong>{activeSmartCount}/{totalSmartFeatures}</strong>
               <span className="pantry-count-label">Active now</span>
             </div>
           </div>
@@ -264,28 +264,6 @@ export default function SettingsPage({
                   onClick={() => toggleSetting("smartSuggestions")}
                 >
                   {settings.smartSuggestions ? "On" : "Off"}
-                </button>
-              </div>
-            </div>
-
-            <div className="setting-row">
-              <div className="setting-copy">
-                <h4>Auto-start guided cooking</h4>
-                <p>
-                  Open recipe details directly in step-by-step guide mode when
-                  instructions are available.
-                </p>
-              </div>
-
-              <div className="setting-actions">
-                <button
-                  type="button"
-                  className={`toggle-switch ${
-                    settings.autoStartGuide ? "on" : ""
-                  }`}
-                  onClick={() => toggleSetting("autoStartGuide")}
-                >
-                  {settings.autoStartGuide ? "On" : "Off"}
                 </button>
               </div>
             </div>

@@ -87,6 +87,20 @@ function App() {
   }, []);
 
   useEffect(() => {
+    setSettings((current) => {
+      if (
+        !current ||
+        !Object.prototype.hasOwnProperty.call(current, "autoStartGuide")
+      ) {
+        return current;
+      }
+
+      const { autoStartGuide: _removed, ...rest } = current;
+      return { ...defaultSettings, ...rest };
+    });
+  }, [setSettings]);
+
+  useEffect(() => {
     if (!userId) return;
     let isMounted = true;
 
@@ -124,11 +138,14 @@ function App() {
         if (settingsResp.ok) {
           const settingsPayload = await settingsResp.json();
           if (isMounted) {
-            setSettings((current) => ({
-              ...defaultSettings,
-              ...current,
-              ...settingsPayload,
-            }));
+            setSettings((current) => {
+              const { autoStartGuide: _removed, ...rest } = current || {};
+              return {
+                ...defaultSettings,
+                ...rest,
+                ...settingsPayload,
+              };
+            });
             setSettingsSyncMessage("Settings synced.");
           }
         } else if (isMounted) {

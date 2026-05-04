@@ -78,14 +78,6 @@ export default function RecipeDetailsPage({
   }, [recipe.id]);
 
   useEffect(() => {
-    if (!settings.autoStartGuide || guideSteps.length === 0) return;
-
-    setGuideMode(true);
-    setActiveGuideStep(0);
-    setCompletedGuideSteps([]);
-  }, [guideSteps.length, recipe.id, settings.autoStartGuide]);
-
-  useEffect(() => {
     if (!celebrate) return undefined;
     const timeoutId = window.setTimeout(() => setCelebrate(false), 1000);
     return () => window.clearTimeout(timeoutId);

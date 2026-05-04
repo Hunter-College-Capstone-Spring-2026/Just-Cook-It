@@ -20,6 +20,5 @@ export const defaultSettings = {
   quickRecipes: true,
   units: "metric",
   smartSuggestions: true,
-  autoStartGuide: false,
   ingredientInsights: true,
 };
