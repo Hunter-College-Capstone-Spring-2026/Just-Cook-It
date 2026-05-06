@@ -111,9 +111,6 @@ fix clearing cooked recipe bug:Cleared with warning: cooked recipe reset skipped
 '''
 
 def _upsert_recipe(recipe: dict[str, Any]) -> bool:
-    # Ensure the Recipe row exists before we write a UserRecipe FK.
-    # Uses ON CONFLICT DO NOTHING so duplicate inserts are safe.
-    # May need to tweak to make sure dupes dont exist
     try:
         supabase.table(settings.supabase_recipe_table).upsert(
             {
@@ -125,7 +122,8 @@ def _upsert_recipe(recipe: dict[str, Any]) -> bool:
             on_conflict="recipe_id",
         ).execute()
         return True
-    except Exception:
+    except Exception as exc:
+        print(f"[ERROR] _upsert_recipe failed for recipe_id={recipe.get('recipeId')}: {exc}")
         return False
     
 
@@ -466,8 +464,10 @@ def save_user_cooked_recipe(payload: dict[str, Any]):
 
     warning = None
 
+    if not _upsert_recipe(recipe):
+        return {"saved": False, "warning": "Could not upsert Recipe row — FK would fail.", "recipes": []}
+
     try:
-        _upsert_recipe(recipe)
         existing = _safe_first(
             supabase.table(settings.supabase_user_recipe_table)
             .select("user_recipe_id")
