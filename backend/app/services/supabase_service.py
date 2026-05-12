@@ -61,6 +61,21 @@ def _clean_string(value: Any) -> str:
     return value.strip() if isinstance(value, str) else ""
 
 
+def _clean_positive_int(value: Any, maximum: int | None = None) -> int | None:
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return None
+
+    if parsed <= 0:
+        return None
+
+    if maximum is not None:
+        return min(parsed, maximum)
+
+    return parsed
+
+
 def _clean_string_list(values: Any) -> list[str]:
     cleaned: list[str] = []
     seen: set[str] = set()
@@ -278,6 +293,7 @@ def get_user_profile(user_id: str):
         "userId": user_id,
         "name": "",
         "email": "",
+        "maxReadyTime": "",
         "dietary": {},
         "notes": "",
         "cookedRecipes": [],
@@ -295,6 +311,31 @@ def get_user_profile(user_id: str):
         if user_row:
             profile["name"] = user_row.get("user_name", "")
             profile["email"] = user_row.get("user_email", "")
+    except Exception:
+        pass
+
+    try:
+        state_row = _safe_first(
+            supabase.table(settings.supabase_state_table)
+            .select("*")
+            .eq("user_id", user_id)
+            .limit(1)
+            .execute()
+            .data
+        )
+        state_blob = _get_state_blob(state_row)
+        stored_profile = _safe_dict(state_blob.get("profile"))
+
+        profile["notes"] = _clean_string(
+            stored_profile.get("notes", state_blob.get("notes", ""))
+        )
+        profile["maxReadyTime"] = (
+            _clean_positive_int(stored_profile.get("maxReadyTime"), 300)
+            or _clean_positive_int(stored_profile.get("maxTime"), 300)
+            or _clean_positive_int(state_blob.get("maxReadyTime"), 300)
+            or _clean_positive_int(state_blob.get("maxTime"), 300)
+            or ""
+        )
     except Exception:
         pass
 
@@ -402,6 +443,41 @@ def save_user_profile(payload: dict[str, Any]):
                 supabase.table(settings.supabase_user_dietary_table).delete().eq("user_id", user_id).execute()
             except Exception as exc:
                 warning = (warning + f"; dietary clear failed: {exc}") if warning else f"dietary clear failed: {exc}"
+
+    try:
+        current_state = _safe_first(
+            supabase.table(settings.supabase_state_table)
+            .select("*")
+            .eq("user_id", user_id)
+            .limit(1)
+            .execute()
+            .data
+        )
+        state_blob = _get_state_blob(current_state)
+        stored_profile = _safe_dict(state_blob.get("profile"))
+        max_ready_time = _clean_positive_int(
+            payload.get("maxReadyTime", payload.get("maxTime")),
+            300,
+        )
+
+        next_profile_state = {
+            **stored_profile,
+            "notes": _clean_string(payload.get("notes", stored_profile.get("notes", ""))),
+        }
+        if max_ready_time is None:
+            next_profile_state.pop("maxReadyTime", None)
+            next_profile_state.pop("maxTime", None)
+        else:
+            next_profile_state["maxReadyTime"] = max_ready_time
+
+        state_blob["profile"] = next_profile_state
+
+        supabase.table(settings.supabase_state_table).upsert(
+            {"user_id": user_id, "state_json": state_blob},
+            on_conflict="user_id",
+        ).execute()
+    except Exception as exc:
+        warning = (warning + f"; profile preferences save skipped: {exc}") if warning else f"profile preferences save skipped: {exc}"
 
     return {"saved": True, "warning": warning}
 

@@ -1283,6 +1283,28 @@ button:focus-visible {
   min-height: 0;
 }
 
+.profile-time-input-row {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  max-width: 260px;
+}
+
+.profile-time-input-row input {
+  margin: 0;
+}
+
+.profile-time-input-unit {
+  color: var(--text-secondary);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.profile-field-hint {
+  margin-top: 0.2rem;
+  margin-bottom: 0.85rem;
+}
+
 .favorites-hero-card,
 .favorites-list-card,
 .favorites-empty-card {
@@ -1911,6 +1933,12 @@ button:focus-visible {
 
   .profile-grid {
     grid-template-columns: 1fr;
+  }
+
+  .profile-time-input-row {
+    max-width: none;
+    flex-direction: column;
+    align-items: stretch;
   }
 
   .home-hero-card {

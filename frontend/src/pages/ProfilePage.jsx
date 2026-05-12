@@ -98,6 +98,11 @@ export default function ProfilePage({
           query.set("ingredients", pantryItems.join(","));
         }
 
+        const parsedProfileMaxTime = Number(profile.maxReadyTime);
+        if (Number.isFinite(parsedProfileMaxTime) && parsedProfileMaxTime > 0) {
+          query.set("maxTime", String(Math.min(parsedProfileMaxTime, 300)));
+        }
+
         const response = await fetch(
           `${API_BASE_URL}/recipes/search?${query.toString()}`,
         );
@@ -131,7 +136,7 @@ export default function ProfilePage({
     return () => {
       cancelled = true;
     };
-  }, [pantryItems, settings.quickRecipes, userId]);
+  }, [pantryItems, profile.maxReadyTime, settings.quickRecipes, userId]);
 
   const updateDietary = (name) => {
     setProfile((current) => ({
@@ -313,6 +318,40 @@ export default function ProfilePage({
             setProfile((current) => ({ ...current, email: event.target.value }))
           }
         />
+
+        <label htmlFor="profileMaxTime">Preferred max cook time</label>
+        <div className="profile-time-input-row">
+          <input
+            id="profileMaxTime"
+            type="text"
+            inputMode="numeric"
+            pattern="[0-9]*"
+            placeholder="30"
+            value={profile.maxReadyTime ?? ""}
+            onChange={(event) =>
+              setProfile((current) => ({
+                ...current,
+                maxReadyTime: event.target.value.replace(/\D/g, "").slice(0, 3),
+              }))
+            }
+            onBlur={() => {
+              if (!profile.maxReadyTime) return;
+              const boundedMinutes = Math.min(
+                Math.max(Number(profile.maxReadyTime), 1),
+                300,
+              );
+              setProfile((current) => ({
+                ...current,
+                maxReadyTime: String(boundedMinutes),
+              }));
+            }}
+            aria-describedby="profileMaxTimeHint"
+          />
+          <span className="profile-time-input-unit">minutes</span>
+        </div>
+        <p id="profileMaxTimeHint" className="field-hint profile-field-hint">
+          Used as the default max time for recipe searches and profile suggestions.
+        </p>
 
         {restrictions.length === 0 ? (
           <p style={{ color: "var(--text-secondary)", fontSize: "0.9rem" }}>

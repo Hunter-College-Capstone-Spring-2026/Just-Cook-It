@@ -118,7 +118,17 @@ def search_recipes_complex(
     url = f"{settings.spoonacular_base_url}/recipes/complexSearch"
 
     user_profile = get_user_profile(user_id)
+    user_settings = get_user_settings(user_id)
     dietary = user_profile.get("dietary", {})
+    derived_max_ready_time = _first_valid_int(
+        max_ready_time,
+        user_profile.get("maxReadyTime"),
+        user_profile.get("maxTime"),
+        user_settings.get("maxReadyTime"),
+        user_settings.get("maxTime"),
+        user_settings.get("preferredMaxReadyTime"),
+        user_settings.get("readyTime"),
+    )
 
     # Pull pantry and merge with any explicitly passed ingredients
     pantry_items = get_user_pantry(user_id)
@@ -162,8 +172,8 @@ def search_recipes_complex(
     else:
         params["sort"] = "min-missing-ingredients"
 
-    if max_ready_time is not None:
-        params["maxReadyTime"] = max_ready_time
+    if derived_max_ready_time is not None:
+        params["maxReadyTime"] = derived_max_ready_time
 
     # Use the full dietary helper — covers vegan, keto, paleo, whole30,
     # gluten/dairy/shellfish/soy/egg/treenut/wheat intolerances, etc.
