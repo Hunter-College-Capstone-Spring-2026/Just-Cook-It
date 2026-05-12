@@ -443,8 +443,9 @@ export default function HomePage({
         query.set("query", trimmedQuery);
       }
 
-      if (maxTimeMinutes) {
-        query.set("maxTime", maxTimeMinutes);
+      const parsedMaxTime = Number(maxTimeMinutes);
+      if (Number.isFinite(parsedMaxTime) && parsedMaxTime > 0) {
+        query.set("maxTime", String(Math.min(parsedMaxTime, 300)));
       }
 
       const response = await fetch(
@@ -499,6 +500,7 @@ export default function HomePage({
     setInputValue("");
     setManualIngredients([]);
     setQueryText("");
+    setMaxTimeMinutes("");
     setError("");
     setApiError("");
   };
@@ -772,17 +774,34 @@ export default function HomePage({
               }}
             />
 
-            <label htmlFor="maxTimeInput">Max time</label>
-            <input
-              type="number"
-              id="maxTimeInput"
-              className="time-input-compact"
-              min="1"
-              max="300"
-              placeholder="Optional"
-              value={maxTimeMinutes}
-              onChange={(event) => setMaxTimeMinutes(event.target.value)}
-            />
+            <label htmlFor="maxTimeInput">Preferred cook time (minutes)</label>
+            <div className="time-input-row">
+              <input
+                type="text"
+                id="maxTimeInput"
+                className="time-input-compact"
+                inputMode="numeric"
+                pattern="[0-9]*"
+                placeholder="30"
+                value={maxTimeMinutes}
+                onChange={(event) =>
+                  setMaxTimeMinutes(event.target.value.replace(/\D/g, "").slice(0, 3))
+                }
+                onBlur={() => {
+                  if (!maxTimeMinutes) return;
+                  const boundedMinutes = Math.min(
+                    Math.max(Number(maxTimeMinutes), 1),
+                    300,
+                  );
+                  setMaxTimeMinutes(String(boundedMinutes));
+                }}
+                aria-describedby="maxTimeHint"
+              />
+              <span className="time-input-unit">minutes</span>
+            </div>
+            <p id="maxTimeHint" className="field-hint">
+              Leave this blank if any cook time works for you.
+            </p>
 
             <label>Rank results by</label>
             <div

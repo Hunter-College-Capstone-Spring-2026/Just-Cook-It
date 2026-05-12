@@ -544,9 +544,21 @@ button:focus-visible {
   font-weight: 600;
 }
 
+.time-input-row {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+}
+
 .time-input-compact {
-  max-width: 220px;
-  padding: 0.45rem 0.55rem;
+  max-width: 170px;
+  margin: 0;
+  padding: 0.72rem 0.85rem;
+}
+
+.time-input-unit {
+  color: var(--text-secondary);
+  font-weight: 600;
 }
 
 .clear-btn {
@@ -1942,6 +1954,11 @@ button:focus-visible {
   .clear-btn {
     width: 100%;
     max-width: none;
+  }
+
+  .time-input-row {
+    flex-direction: column;
+    align-items: stretch;
   }
 
   .ingredient-input-row {

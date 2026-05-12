@@ -63,6 +63,8 @@ def _derive_diet_and_intolerances(dietary: dict) -> tuple[str | None, str | None
     diet_priority = [
         ("vegan", "vegan"),
         ("vegetarian", "vegetarian"),
+        ("lactovegetarian", "lacto-vegetarian"),  
+        ("ovovegetarian", "ovo-vegetarian"),
         ("pescetarian", "pescetarian"),
         ("ketogenic", "ketogenic"),
         ("paleo", "paleo"),
@@ -118,9 +120,21 @@ def search_recipes_complex(
     user_profile = get_user_profile(user_id)
     dietary = user_profile.get("dietary", {})
 
-    normalized_ingredients = ",".join(
-        [part.strip() for part in (ingredients or "").split(",") if part.strip()]
-    )
+    # Pull pantry and merge with any explicitly passed ingredients
+    pantry_items = get_user_pantry(user_id)
+    passed_ingredients = [
+        part.strip() for part in (ingredients or "").split(",") if part.strip()
+    ]
+    # Deduplicate: passed ingredients first, then pantry fills the rest
+    seen: set[str] = set()
+    merged: list[str] = []
+    for item in passed_ingredients + pantry_items:
+        key = item.lower()
+        if key not in seen:
+            seen.add(key)
+            merged.append(item)
+
+    normalized_ingredients = ",".join(merged)
     normalized_query = (query_text or "").strip()
 
     if not normalized_ingredients and not normalized_query:
@@ -151,13 +165,13 @@ def search_recipes_complex(
     if max_ready_time is not None:
         params["maxReadyTime"] = max_ready_time
 
-    if dietary.get("vegetarian"):
-        params["diet"] = "vegetarian"
-    elif dietary.get("vegan"):
-        params["diet"] = "vegan"
-
-    if dietary.get("glutenFree"):
-        params["intolerances"] = "gluten"
+    # Use the full dietary helper — covers vegan, keto, paleo, whole30,
+    # gluten/dairy/shellfish/soy/egg/treenut/wheat intolerances, etc.
+    diet, intolerances = _derive_diet_and_intolerances(dietary)
+    if diet:
+        params["diet"] = diet
+    if intolerances:
+        params["intolerances"] = intolerances
 
     try:
         response = requests.get(url, params=params, timeout=15)

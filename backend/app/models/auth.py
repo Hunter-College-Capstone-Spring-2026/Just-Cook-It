@@ -8,3 +8,6 @@ class SignUpRequest(BaseModel):
 class SignInRequest(BaseModel):
     email: str
     password: str
+
+class SignOutRequest(BaseModel):
+    userId: str | None = None
