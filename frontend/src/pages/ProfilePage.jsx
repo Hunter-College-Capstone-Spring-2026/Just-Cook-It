@@ -257,7 +257,7 @@ export default function ProfilePage({
 
         <section className="card gradient-card profile-card profile-card-compact">
           <div className="profile-panel-top">
-            <h3>Next</h3>
+            <h3>Favorites</h3>
             <span className="profile-inline-count">{recipeIdeas.length}</span>
           </div>
 
