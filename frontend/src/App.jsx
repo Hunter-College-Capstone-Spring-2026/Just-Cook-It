@@ -12,7 +12,6 @@ import {
   normalizeSavedRecipe,
 } from "./lib/appHelpers";
 import { SignInPage, SignUpPage } from "./pages/AuthPages";
-import FavoritesPage from "./pages/FavoritesPage";
 import HomePage from "./pages/HomePage";
 import PantryPage from "./pages/PantryPage";
 import ProfilePage from "./pages/ProfilePage";
@@ -56,7 +55,6 @@ function App() {
     ? [
         { id: "home", label: "Home" },
         { id: "pantry", label: "Pantry" },
-        { id: "favorites", label: "Favorites" },
         { id: "profile", label: "Profile" },
         { id: "settings", label: "Settings" },
       ]
@@ -67,6 +65,12 @@ function App() {
       setActivePage("signin");
     }
   }, [activePage, isLoggedIn]);
+
+  useEffect(() => {
+    if (activePage === "favorites") {
+      setActivePage("profile");
+    }
+  }, [activePage]);
 
   useEffect(() => {
     const mediaQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
@@ -583,15 +587,25 @@ function App() {
             />
           )}
 
-          {activePage === "favorites" && (
+          {activePage === "profile" && (
             <>
               {!selectedRecipe ? (
-                <FavoritesPage
+                <ProfilePage
+                  userId={userId}
+                  profile={profile}
+                  setProfile={setProfile}
+                  settings={settings}
+                  cookedRecipes={cookedRecipes}
                   savedRecipes={savedRecipes}
                   savedRecipeIds={savedRecipeIds}
                   onToggleSaved={toggleSavedRecipe}
                   onOpenRecipe={(recipe) => setSelectedRecipe(recipe)}
                   onGoHome={() => handlePageChange("home")}
+                  onResetCooked={resetCookedRecipes}
+                  onSave={saveProfile}
+                  syncMessage={profileSyncMessage}
+                  saving={savingProfile}
+                  resettingCooked={resettingCookedHistory}
                 />
               ) : (
                 <RecipeDetailsPage
@@ -615,21 +629,6 @@ function App() {
                 />
               )}
             </>
-          )}
-
-          {activePage === "profile" && (
-            <ProfilePage
-              userId={userId}
-              profile={profile}
-              setProfile={setProfile}
-              settings={settings}
-              cookedRecipes={cookedRecipes}
-              onResetCooked={resetCookedRecipes}
-              onSave={saveProfile}
-              syncMessage={profileSyncMessage}
-              saving={savingProfile}
-              resettingCooked={resettingCookedHistory}
-            />
           )}
 
           {activePage === "settings" && (
