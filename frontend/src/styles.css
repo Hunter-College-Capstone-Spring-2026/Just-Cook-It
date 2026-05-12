@@ -1117,6 +1117,23 @@ button:focus-visible {
   gap: 1rem;
 }
 
+.profile-preference-card {
+  min-width: 250px;
+  max-width: 290px;
+  padding: 0.95rem 1rem;
+  border-radius: 18px;
+  border: 1px solid rgba(214, 111, 75, 0.14);
+  background: rgba(255, 255, 255, 0.8);
+  box-shadow: 0 12px 22px rgba(74, 44, 29, 0.05);
+}
+
+.profile-preference-card label {
+  display: block;
+  margin: 0;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
 .profile-avatar {
   width: 4.4rem;
   height: 4.4rem;
@@ -1303,6 +1320,11 @@ button:focus-visible {
 .profile-field-hint {
   margin-top: 0.2rem;
   margin-bottom: 0.85rem;
+}
+
+.profile-preference-note {
+  margin-bottom: 0;
+  font-size: 0.88rem;
 }
 
 .favorites-hero-card,
@@ -1933,6 +1955,11 @@ button:focus-visible {
 
   .profile-grid {
     grid-template-columns: 1fr;
+  }
+
+  .profile-preference-card {
+    width: 100%;
+    max-width: none;
   }
 
   .profile-time-input-row {
