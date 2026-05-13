@@ -872,7 +872,7 @@ export default function HomePage({
             <div className="setting-row search-setting-row">
               <div className="setting-copy">
                 <h4>Add searched ingredients to pantry</h4>
-                <p>When enabled, searching also adds current ingredient chips to pantry.</p>
+                <p>When enabled, searching also adds current search ingredients to pantry.</p>
               </div>
               <div className="setting-actions">
                 <button
