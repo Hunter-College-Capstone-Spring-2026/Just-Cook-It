@@ -49,6 +49,19 @@ Optional frontend env (`frontend/.env`):
 VITE_API_BASE_URL=http://localhost:4000
 ```
 
+## 3) Vercel Auto Deploys
+This repo is configured to allow Git-triggered deployments from `main` through [vercel.json](/Users/sumayiarashid/Desktop/Just-Cook-It/vercel.json:1).
+
+To make production update automatically when `main` gets a push:
+```text
+Vercel Project Settings -> Environments -> Production -> Branch Tracking
+Production Branch = main
+```
+
+After that:
+- pushes to `main` create a Production deployment
+- pushes to other branches can still create Preview deployments
+
 ## Backend API Endpoints
 - `GET /api/health`
 - `GET /api/spoonacular/recipes/search?ingredients=rice,tomato&number=5&ranking=1&ignorePantry=true`
