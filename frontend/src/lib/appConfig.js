@@ -6,14 +6,13 @@ export const API_BASE_URL = rawApiBaseUrl.replace(/\/+$/, "");
 export const defaultProfile = {
   email: "",
   name: "",
-  maxReadyTime: "",
+  userMaxReadyTime: "",
   dietary: {
     vegetarian: false,
     vegan: false,
     halal: false,
     glutenFree: false,
   },
-  notes: "",
 };
 
 export const defaultSettings = {

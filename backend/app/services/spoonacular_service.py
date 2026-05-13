@@ -126,12 +126,8 @@ def search_recipes_complex(
         if manual_only
         else _first_valid_int(
             max_ready_time,
-            user_profile.get("maxReadyTime"),
-            user_profile.get("maxTime"),
-            user_settings.get("maxReadyTime"),
-            user_settings.get("maxTime"),
-            user_settings.get("preferredMaxReadyTime"),
-            user_settings.get("readyTime"),
+            user_profile.get("user_max_ready_time"),
+            user_settings.get("user_max_ready_time"),
         )
     )
 
@@ -245,12 +241,8 @@ def get_personalized_recipe_suggestion(
 
     derived_max_ready_time = _first_valid_int(
         max_ready_time,
-        user_profile.get("maxReadyTime"),
-        user_profile.get("maxTime"),
-        user_settings.get("maxReadyTime"),
-        user_settings.get("maxTime"),
-        user_settings.get("preferredMaxReadyTime"),
-        user_settings.get("readyTime"),
+        user_profile.get("user_max_ready_time"),
+        user_settings.get("user_max_ready_time"),
     ) or 30
 
     dietary = user_profile.get("dietary", {})

@@ -16,6 +16,7 @@ export default function PantryPage({
   recipeTitle,
   lastCookedRecipe,
   cookedRecipes,
+  onOpenRecipe,
   onGoHome,
   onResetCooked,
   resettingCooked,
@@ -289,6 +290,22 @@ export default function PantryPage({
                         ? ` • ${recipe.readyInMinutes} min`
                         : ""}
                     </p>
+                    <button
+                      type="button"
+                      className="plan-btn"
+                      onClick={() =>
+                        onOpenRecipe?.({
+                          id: recipe.recipeId,
+                          title: recipe.title,
+                          imageUrl: recipe.image || "",
+                          readyTime: recipe.readyInMinutes ?? null,
+                          cuisines: recipe.cuisines || [],
+                          dishTypes: recipe.dishTypes || [],
+                        })
+                      }
+                    >
+                      Open recipe
+                    </button>
                   </div>
                 </li>
               ))}

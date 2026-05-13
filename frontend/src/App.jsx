@@ -43,7 +43,6 @@ function App() {
   const [settingsSyncMessage, setSettingsSyncMessage] = useState(
     "Settings stored locally.",
   );
-  const [savingProfile, setSavingProfile] = useState(false);
   const [savingSettings, setSavingSettings] = useState(false);
   const [resettingCookedHistory, setResettingCookedHistory] = useState(false);
   const [resettingPantry, setResettingPantry] = useState(false);
@@ -132,9 +131,17 @@ function App() {
           if (isMounted) {
             const {
               cookedRecipes: remoteCookedRecipes = [],
+              user_max_ready_time: userMaxReadyTimeRaw,
               ...profileFields
             } = profilePayload;
-            setProfile(mergeProfile(defaultProfile, profileFields));
+            const mergedProfile = mergeProfile(defaultProfile, profileFields);
+            mergedProfile.userMaxReadyTime =
+              userMaxReadyTimeRaw === null ||
+              userMaxReadyTimeRaw === undefined ||
+              userMaxReadyTimeRaw === ""
+                ? ""
+                : String(userMaxReadyTimeRaw);
+            setProfile(mergedProfile);
             if (Array.isArray(remoteCookedRecipes)) {
               setCookedRecipes(
                 remoteCookedRecipes.map(normalizeCookedRecipe).filter(Boolean),
@@ -149,6 +156,20 @@ function App() {
         if (settingsResp.ok) {
           const settingsPayload = await settingsResp.json();
           if (isMounted) {
+            if (Object.prototype.hasOwnProperty.call(settingsPayload, "name")) {
+              setProfile((current) => ({
+                ...current,
+                name: settingsPayload.name || "",
+                email: settingsPayload.email || "",
+                dietary: settingsPayload.dietary || current.dietary,
+                userMaxReadyTime:
+                  settingsPayload.user_max_ready_time === null ||
+                  settingsPayload.user_max_ready_time === undefined ||
+                  settingsPayload.user_max_ready_time === ""
+                    ? current.userMaxReadyTime
+                    : String(settingsPayload.user_max_ready_time),
+              }));
+            }
             setSettings((current) => {
               const {
                 autoStartGuide: _removedGuide,
@@ -156,10 +177,17 @@ function App() {
                 ingredientInsights: _removedInsights,
                 ...rest
               } = current || {};
+              const {
+                name: _name,
+                email: _email,
+                dietary: _dietary,
+                user_max_ready_time: _userMaxReadyTime,
+                ...settingsOnly
+              } = settingsPayload || {};
               return {
                 ...defaultSettings,
                 ...rest,
-                ...settingsPayload,
+                ...settingsOnly,
               };
             });
             setSettingsSyncMessage("Settings synced.");
@@ -192,37 +220,26 @@ function App() {
     };
   }, [setSavedRecipeIds, setSavedRecipes, setSettings, userId]);
 
-  const saveProfile = async () => {
-    setSavingProfile(true);
-    try {
-      const response = await fetch(`${API_BASE_URL}/api/users/profile`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId, ...profile }),
-      });
-      const payload = await response.json();
-      if (!response.ok) {
-        throw new Error(payload?.detail || "Profile save failed.");
-      }
-      setProfileSyncMessage(
-        payload.warning
-          ? `Saved with warning: ${payload.warning}`
-          : "Profile saved to Supabase.",
-      );
-    } catch (error) {
-      setProfileSyncMessage(error.message || "Profile saved locally only.");
-    } finally {
-      setSavingProfile(false);
-    }
-  };
-
   const saveSettings = async () => {
     setSavingSettings(true);
     try {
+      const parsedUserMaxReadyTime = Number(profile.userMaxReadyTime);
+      const userMaxReadyTime = Number.isFinite(parsedUserMaxReadyTime) &&
+        parsedUserMaxReadyTime > 0
+        ? Math.min(parsedUserMaxReadyTime, 300)
+        : null;
+
       const response = await fetch(`${API_BASE_URL}/api/users/settings`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId, ...settings }),
+        body: JSON.stringify({
+          userId,
+          ...settings,
+          name: profile.name,
+          email: profile.email,
+          dietary: profile.dietary,
+          user_max_ready_time: userMaxReadyTime,
+        }),
       });
       const payload = await response.json();
       if (!response.ok) {
@@ -233,6 +250,16 @@ function App() {
           ? `Saved with warning: ${payload.warning}`
           : "Settings saved to Supabase.",
       );
+      setProfileSyncMessage(
+        payload.warning
+          ? `Saved with warning: ${payload.warning}`
+          : "Profile synced.",
+      );
+      setProfile((current) => ({
+        ...current,
+        userMaxReadyTime:
+          userMaxReadyTime === null ? "" : String(userMaxReadyTime),
+      }));
     } catch (error) {
       setSettingsSyncMessage(error.message || "Settings saved locally only.");
     } finally {
@@ -574,39 +601,58 @@ function App() {
           )}
 
           {activePage === "pantry" && (
-            <PantryPage
-              userId={userId}
-              initialPantryItems={pantryLanding.pantryItems}
-              recentlyAdded={pantryLanding.recentlyAdded}
-              recipeTitle={pantryLanding.recipeTitle}
-              lastCookedRecipe={cookedRecipes[0] || null}
-              cookedRecipes={cookedRecipes}
-              onGoHome={() => handlePageChange("home")}
-              onResetCooked={resetCookedRecipes}
-              resettingCooked={resettingCookedHistory}
-              onResetPantry={resetPantryItems}
-              resettingPantry={resettingPantry}
-            />
+            <>
+              {!selectedRecipe ? (
+                <PantryPage
+                  userId={userId}
+                  initialPantryItems={pantryLanding.pantryItems}
+                  recentlyAdded={pantryLanding.recentlyAdded}
+                  recipeTitle={pantryLanding.recipeTitle}
+                  lastCookedRecipe={cookedRecipes[0] || null}
+                  cookedRecipes={cookedRecipes}
+                  onOpenRecipe={(recipe) => setSelectedRecipe(recipe)}
+                  onGoHome={() => handlePageChange("home")}
+                  onResetCooked={resetCookedRecipes}
+                  resettingCooked={resettingCookedHistory}
+                  onResetPantry={resetPantryItems}
+                  resettingPantry={resettingPantry}
+                />
+              ) : (
+                <RecipeDetailsPage
+                  recipe={selectedRecipe}
+                  userId={userId}
+                  settings={settings}
+                  onBack={() => setSelectedRecipe(null)}
+                  onCookedRecipe={recordCookedRecipe}
+                  onCooked={({ pantryItems, recentlyAdded, recipeTitle }) => {
+                    setPantryLanding({
+                      pantryItems,
+                      recentlyAdded,
+                      recipeTitle,
+                    });
+                    handlePageChange("pantry", {
+                      preservePantryContext: true,
+                    });
+                  }}
+                  savedRecipeIds={savedRecipeIds}
+                  onToggleSaved={toggleSavedRecipe}
+                />
+              )}
+            </>
           )}
 
           {activePage === "profile" && (
             <>
               {!selectedRecipe ? (
                 <ProfilePage
-                  userId={userId}
                   profile={profile}
-                  setProfile={setProfile}
-                  settings={settings}
                   cookedRecipes={cookedRecipes}
                   savedRecipes={savedRecipes}
                   savedRecipeIds={savedRecipeIds}
                   onToggleSaved={toggleSavedRecipe}
                   onOpenRecipe={(recipe) => setSelectedRecipe(recipe)}
-                  onGoHome={() => handlePageChange("home")}
                   onResetCooked={resetCookedRecipes}
-                  onSave={saveProfile}
                   syncMessage={profileSyncMessage}
-                  saving={savingProfile}
                   resettingCooked={resettingCookedHistory}
                 />
               ) : (
@@ -635,6 +681,8 @@ function App() {
 
           {activePage === "settings" && (
             <SettingsPage
+              profile={profile}
+              setProfile={setProfile}
               settings={settings}
               setSettings={setSettings}
               onSave={saveSettings}

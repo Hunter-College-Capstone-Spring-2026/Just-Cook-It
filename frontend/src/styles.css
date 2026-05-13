@@ -1283,12 +1283,22 @@ button:focus-visible {
   white-space: nowrap;
 }
 
+.history-open-btn {
+  width: auto;
+  margin-top: 0.45rem;
+  padding: 0.35rem 0.8rem;
+  border-radius: 999px;
+}
+
 .profile-history-card,
 .profile-card-compact {
   align-self: start;
 }
 
-.profile-history-card .history-list,
+.profile-history-card .history-list {
+  padding-right: 0.25rem;
+}
+
 .profile-card-compact .profile-mini-list {
   max-height: 18rem;
   overflow-y: auto;

@@ -76,6 +76,14 @@ def _clean_positive_int(value: Any, maximum: int | None = None) -> int | None:
     return parsed
 
 
+def _clean_nullable_positive_int(value: Any, maximum: int | None = None) -> int | None:
+    if value is None:
+        return None
+    if isinstance(value, str) and not value.strip():
+        return None
+    return _clean_positive_int(value, maximum)
+
+
 def _clean_string_list(values: Any) -> list[str]:
     cleaned: list[str] = []
     seen: set[str] = set()
@@ -87,6 +95,11 @@ def _clean_string_list(values: Any) -> list[str]:
         seen.add(key)
         cleaned.append(item)
     return cleaned
+
+
+def _is_missing_state_table_error(exc: Exception) -> bool:
+    message = str(exc)
+    return "PGRST205" in message and "UserAppState" in message
 
 
 def _normalize_cooked_recipe(recipe: Any) -> dict[str, Any] | None:
@@ -293,9 +306,8 @@ def get_user_profile(user_id: str):
         "userId": user_id,
         "name": "",
         "email": "",
-        "maxReadyTime": "",
+        "user_max_ready_time": None,
         "dietary": {},
-        "notes": "",
         "cookedRecipes": [],
     }
 
@@ -311,31 +323,10 @@ def get_user_profile(user_id: str):
         if user_row:
             profile["name"] = user_row.get("user_name", "")
             profile["email"] = user_row.get("user_email", "")
-    except Exception:
-        pass
-
-    try:
-        state_row = _safe_first(
-            supabase.table(settings.supabase_state_table)
-            .select("*")
-            .eq("user_id", user_id)
-            .limit(1)
-            .execute()
-            .data
-        )
-        state_blob = _get_state_blob(state_row)
-        stored_profile = _safe_dict(state_blob.get("profile"))
-
-        profile["notes"] = _clean_string(
-            stored_profile.get("notes", state_blob.get("notes", ""))
-        )
-        profile["maxReadyTime"] = (
-            _clean_positive_int(stored_profile.get("maxReadyTime"), 300)
-            or _clean_positive_int(stored_profile.get("maxTime"), 300)
-            or _clean_positive_int(state_blob.get("maxReadyTime"), 300)
-            or _clean_positive_int(state_blob.get("maxTime"), 300)
-            or ""
-        )
+            profile["user_max_ready_time"] = _clean_nullable_positive_int(
+                user_row.get("user_max_ready_time"),
+                300,
+            )
     except Exception:
         pass
 
@@ -421,11 +412,16 @@ def save_user_profile(payload: dict[str, Any]):
     warning = None
 
     try:
+        user_max_ready_time = _clean_nullable_positive_int(
+            payload.get("user_max_ready_time"),
+            300,
+        )
         supabase.table(settings.supabase_user_table).upsert(
             {
                 "user_id": user_id,
                 "user_name": payload.get("name", ""),
                 "user_email": payload.get("email", ""),
+                "user_max_ready_time": user_max_ready_time,
             },
             on_conflict="user_id",
         ).execute()
@@ -444,41 +440,6 @@ def save_user_profile(payload: dict[str, Any]):
             except Exception as exc:
                 warning = (warning + f"; dietary clear failed: {exc}") if warning else f"dietary clear failed: {exc}"
 
-    try:
-        current_state = _safe_first(
-            supabase.table(settings.supabase_state_table)
-            .select("*")
-            .eq("user_id", user_id)
-            .limit(1)
-            .execute()
-            .data
-        )
-        state_blob = _get_state_blob(current_state)
-        stored_profile = _safe_dict(state_blob.get("profile"))
-        max_ready_time = _clean_positive_int(
-            payload.get("maxReadyTime", payload.get("maxTime")),
-            300,
-        )
-
-        next_profile_state = {
-            **stored_profile,
-            "notes": _clean_string(payload.get("notes", stored_profile.get("notes", ""))),
-        }
-        if max_ready_time is None:
-            next_profile_state.pop("maxReadyTime", None)
-            next_profile_state.pop("maxTime", None)
-        else:
-            next_profile_state["maxReadyTime"] = max_ready_time
-
-        state_blob["profile"] = next_profile_state
-
-        supabase.table(settings.supabase_state_table).upsert(
-            {"user_id": user_id, "state_json": state_blob},
-            on_conflict="user_id",
-        ).execute()
-    except Exception as exc:
-        warning = (warning + f"; profile preferences save skipped: {exc}") if warning else f"profile preferences save skipped: {exc}"
-
     return {"saved": True, "warning": warning}
 
 def get_user_settings(user_id: str):
@@ -487,18 +448,51 @@ def get_user_settings(user_id: str):
         "quickRecipes": True,
         "notifications": False,
         "units": "metric",
+        "name": "",
+        "email": "",
+        "dietary": {},
+        "user_max_ready_time": None,
     }
+    user_row = {}
+    try:
+        user_row = _safe_first(
+            supabase.table(settings.supabase_user_table)
+            .select("*")
+            .eq("user_id", user_id)
+            .limit(1)
+            .execute()
+            .data
+        ) or {}
+    except Exception:
+        user_row = {}
+
     try:
         state_row = _safe_first(
             supabase.table(settings.supabase_state_table).select("*").eq("user_id", user_id).limit(1).execute().data
         )
         state_blob = _get_state_blob(state_row)
         stored_settings = _safe_dict(state_blob.get("settings", {}))
-        return {
+        merged = {
             key: stored_settings.get(key, value)
             for key, value in defaults.items()
+            if key in {"quickRecipes", "notifications", "units"}
         }
+        merged["name"] = user_row.get("user_name", "")
+        merged["email"] = user_row.get("user_email", "")
+        merged["dietary"] = _get_user_dietary_restrictions(user_id)
+        merged["user_max_ready_time"] = _clean_nullable_positive_int(
+            user_row.get("user_max_ready_time"),
+            300,
+        )
+        return merged
     except Exception:
+        defaults["name"] = user_row.get("user_name", "")
+        defaults["email"] = user_row.get("user_email", "")
+        defaults["dietary"] = _get_user_dietary_restrictions(user_id)
+        defaults["user_max_ready_time"] = _clean_nullable_positive_int(
+            user_row.get("user_max_ready_time"),
+            300,
+        )
         return defaults
 
 
@@ -508,6 +502,34 @@ def save_user_settings(payload: dict[str, Any]):
         return {"saved": False, "warning": "userId is required."}
 
     warning = None
+    try:
+        user_max_ready_time = _clean_nullable_positive_int(
+            payload.get("user_max_ready_time"),
+            300,
+        )
+        supabase.table(settings.supabase_user_table).upsert(
+            {
+                "user_id": user_id,
+                "user_name": payload.get("name", ""),
+                "user_email": payload.get("email", ""),
+                "user_max_ready_time": user_max_ready_time,
+            },
+            on_conflict="user_id",
+        ).execute()
+    except Exception as exc:
+        warning = f"user info save skipped: {exc}"
+
+    if "dietary" in payload:
+        dietary_names = _normalize_dietary_names(payload["dietary"])
+        if dietary_names:
+            if not _sync_user_dietary_restrictions(user_id, dietary_names):
+                warning = (warning + "; dietary sync failed") if warning else "dietary sync failed"
+        else:
+            try:
+                supabase.table(settings.supabase_user_dietary_table).delete().eq("user_id", user_id).execute()
+            except Exception as exc:
+                warning = (warning + f"; dietary clear failed: {exc}") if warning else f"dietary clear failed: {exc}"
+
     try:
         current_state = _safe_first(
             supabase.table(settings.supabase_state_table).select("*").eq("user_id", user_id).limit(1).execute().data
@@ -523,7 +545,8 @@ def save_user_settings(payload: dict[str, Any]):
             on_conflict="user_id",
         ).execute()
     except Exception as exc:
-        warning = f"settings save skipped: {exc}"
+        if not _is_missing_state_table_error(exc):
+            warning = (warning + f"; settings save skipped: {exc}") if warning else f"settings save skipped: {exc}"
 
     return {"saved": True, "warning": warning}
 

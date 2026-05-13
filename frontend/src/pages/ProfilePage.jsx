@@ -1,36 +1,23 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 
-import { API_BASE_URL } from "../lib/appConfig";
 import {
   analyzeCookedRecipes,
   buildRecipePreview,
   formatCookedDate,
-  formatRequestError,
   inferRecipeCuisines,
 } from "../lib/appHelpers";
 
 export default function ProfilePage({
-  userId,
   profile,
-  setProfile,
-  settings,
   cookedRecipes,
   savedRecipes,
   savedRecipeIds,
   onToggleSaved,
   onOpenRecipe,
-  onGoHome,
   onResetCooked,
-  onSave,
   syncMessage,
-  saving,
   resettingCooked,
 }) {
-  const [restrictions, setRestrictions] = useState([]);
-  const [pantryItems, setPantryItems] = useState([]);
-  const [recipeIdeas, setRecipeIdeas] = useState([]);
-  const [ideasLoading, setIdeasLoading] = useState(false);
-  const [ideasError, setIdeasError] = useState("");
   const tasteProfile = useMemo(
     () => analyzeCookedRecipes(cookedRecipes),
     [cookedRecipes],
@@ -48,110 +35,6 @@ export default function ProfilePage({
     .trim()
     .charAt(0)
     .toUpperCase();
-  const latestSavedRecipe = savedRecipes[0] || null;
-  const savedCountLabel = savedRecipes.length === 1 ? "recipe" : "recipes";
-
-  useEffect(() => {
-    fetch(`${API_BASE_URL}/api/dietary-restrictions`)
-      .then((r) => r.json())
-      .then((data) => setRestrictions(Array.isArray(data) ? data : []))
-      .catch(() => setRestrictions([]));
-  }, []);
-
-  useEffect(() => {
-    let cancelled = false;
-    const loadPantry = async () => {
-      try {
-        const response = await fetch(
-          `${API_BASE_URL}/api/pantry/?userId=${encodeURIComponent(userId)}`,
-        );
-        if (!response.ok) return;
-        const payload = await response.json();
-        if (!cancelled) {
-          setPantryItems(
-            Array.isArray(payload.ingredients) ? payload.ingredients : [],
-          );
-        }
-      } catch {
-        if (!cancelled) setPantryItems([]);
-      }
-    };
-    if (userId) loadPantry();
-    return () => {
-      cancelled = true;
-    };
-  }, [userId]);
-
-  useEffect(() => {
-    if (pantryItems.length === 0) {
-      setRecipeIdeas([]);
-      setIdeasError("");
-      return;
-    }
-
-    let cancelled = false;
-    const loadIdeas = async () => {
-      setIdeasLoading(true);
-      setIdeasError("");
-
-      try {
-        const query = new URLSearchParams({
-          userId,
-          number: String(settings.quickRecipes ? 3 : 5),
-          ranking: "2",
-          ignorePantry: "true",
-        });
-
-        if (pantryItems.length > 0) {
-          query.set("ingredients", pantryItems.join(","));
-        }
-
-        const parsedProfileMaxTime = Number(profile.maxReadyTime);
-        if (Number.isFinite(parsedProfileMaxTime) && parsedProfileMaxTime > 0) {
-          query.set("maxTime", String(Math.min(parsedProfileMaxTime, 300)));
-        }
-
-        const response = await fetch(
-          `${API_BASE_URL}/recipes/search?${query.toString()}`,
-        );
-
-        const payload = await response.json();
-
-        if (!response.ok) {
-          throw new Error(
-            payload?.error?.message ||
-              payload?.detail ||
-              "Could not load recipe ideas.",
-          );
-        }
-
-        if (!cancelled) {
-          setRecipeIdeas(payload.results || []);
-        }
-      } catch (error) {
-        if (!cancelled) {
-          setRecipeIdeas([]);
-          setIdeasError(
-            formatRequestError(error, "Could not load recipe ideas."),
-          );
-        }
-      } finally {
-        if (!cancelled) setIdeasLoading(false);
-      }
-    };
-
-    loadIdeas();
-    return () => {
-      cancelled = true;
-    };
-  }, [pantryItems, profile.maxReadyTime, settings.quickRecipes, userId]);
-
-  const updateDietary = (name) => {
-    setProfile((current) => ({
-      ...current,
-      dietary: { ...current.dietary, [name]: !current.dietary[name] },
-    }));
-  };
 
   const handleResetCooked = async () => {
     if (cookedRecipes.length === 0 || resettingCooked) return;
@@ -178,51 +61,14 @@ export default function ProfilePage({
             </div>
           </div>
 
-          <div className="profile-preference-card">
-            <p className="profile-kicker">Cook time</p>
-            <label htmlFor="profileMaxTime">Max time preference</label>
-            <div className="profile-time-input-row">
-              <input
-                id="profileMaxTime"
-                type="text"
-                inputMode="numeric"
-                pattern="[0-9]*"
-                placeholder="30"
-                value={profile.maxReadyTime ?? ""}
-                onChange={(event) =>
-                  setProfile((current) => ({
-                    ...current,
-                    maxReadyTime: event.target.value.replace(/\D/g, "").slice(0, 3),
-                  }))
-                }
-                onBlur={() => {
-                  if (!profile.maxReadyTime) return;
-                  const boundedMinutes = Math.min(
-                    Math.max(Number(profile.maxReadyTime), 1),
-                    300,
-                  );
-                  setProfile((current) => ({
-                    ...current,
-                    maxReadyTime: String(boundedMinutes),
-                  }));
-                }}
-                aria-describedby="profileMaxTimeHint"
-              />
-              <span className="profile-time-input-unit">minutes</span>
-            </div>
-            <p id="profileMaxTimeHint" className="sync-line profile-preference-note">
-              Used for search defaults and profile suggestions.
-            </p>
-          </div>
-
           <div className="profile-stat-grid">
             <div className="profile-stat-tile">
               <span className="profile-stat-label">Cooked</span>
               <strong>{cookedRecipes.length}</strong>
             </div>
             <div className="profile-stat-tile">
-              <span className="profile-stat-label">Pantry</span>
-              <strong>{pantryItems.length}</strong>
+              <span className="profile-stat-label">Saved</span>
+              <strong>{savedRecipes.length}</strong>
             </div>
             <div className="profile-stat-tile wide">
               <span className="profile-stat-label">Favorite cuisine</span>
@@ -233,12 +79,12 @@ export default function ProfilePage({
 
         <div className="taste-summary-row">
           <div>
-            <p className="profile-kicker">Taste</p>
-            <h3>{tasteProfile.favoriteCuisine}</h3>
-            <p className="sync-line">{tasteProfile.note}</p>
+            {/* <p className="profile-kicker">Taste</p>
+            <h3>{tasteProfile.favoriteCuisine}</h3> */}
+            {/* <p className="sync-line">{tasteProfile.note}</p> */}
           </div>
 
-          {tasteProfile.breakdown.length > 0 ? (
+          {/* {tasteProfile.breakdown.length > 0 ? (
             <div className="taste-chip-row">
               {tasteProfile.breakdown.map((item) => (
                 <span key={item.label} className="taste-chip">
@@ -246,7 +92,7 @@ export default function ProfilePage({
                 </span>
               ))}
             </div>
-          ) : null}
+          ) : null} */}
         </div>
       </section>
 
@@ -296,6 +142,22 @@ export default function ProfilePage({
                         ? ` • ${recipe.cuisineTags[0]}`
                         : ""}
                     </p>
+                    <button
+                      type="button"
+                      className="plan-btn"
+                      onClick={() =>
+                        onOpenRecipe({
+                          id: recipe.recipeId,
+                          title: recipe.title,
+                          imageUrl: recipe.image || "",
+                          readyTime: recipe.readyInMinutes ?? null,
+                          cuisines: recipe.cuisines || [],
+                          dishTypes: recipe.dishTypes || [],
+                        })
+                      }
+                    >
+                      Open recipe
+                    </button>
                   </div>
                 </li>
               ))}
@@ -307,237 +169,81 @@ export default function ProfilePage({
 
         <section className="card gradient-card profile-card profile-card-compact">
           <div className="profile-panel-top">
-            <h3>Recipe ideas</h3>
-            <span className="profile-inline-count">{recipeIdeas.length}</span>
-          </div>
-
-          {ideasLoading ? <p className="sync-line">Finding ideas...</p> : null}
-          {ideasError ? <p className="error-text">{ideasError}</p> : null}
-
-          {!ideasLoading && !ideasError && pantryItems.length === 0 ? (
-            <p className="sync-line">Cook once to unlock this.</p>
-          ) : null}
-
-          {!ideasLoading && !ideasError && pantryItems.length > 0 ? (
-            recipeIdeas.length > 0 ? (
-              <ul className="profile-mini-list">
-                {recipeIdeas.slice(0, 4).map((recipe) => (
-                  <li key={recipe.recipeId} className="profile-mini-row">
-                    <span className="profile-mini-title">
-                      {recipe.recipeName}
-                    </span>
-                    <span className="profile-mini-meta">
-                      {recipe.readyInMinutes ?? "?"} min
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <p className="sync-line">No matches yet.</p>
-            )
-          ) : null}
-        </section>
-      </div>
-
-      <section className="card gradient-card favorites-hero-card">
-        <div className="favorites-hero-top">
-          <div className="favorites-hero-copy">
-            <p className="profile-kicker">Favorites</p>
-            <h3>
-              {latestSavedRecipe
-                ? latestSavedRecipe.title
-                : "Your recipe box is ready"}
-            </h3>
-            <p className="sync-line favorites-hero-note">
-              {latestSavedRecipe
-                ? `Latest save ${formatCookedDate(latestSavedRecipe.savedAt)}.`
-                : "Save recipes from Home and they will appear here."}
-            </p>
-          </div>
-
-          <button type="button" className="plan-btn" onClick={onGoHome}>
-            Browse recipes
-          </button>
-        </div>
-
-        <div className="profile-stat-grid favorites-stat-grid">
-          <div className="profile-stat-tile">
-            <span className="profile-stat-label">Saved</span>
-            <strong>{savedRecipes.length}</strong>
-            <span className="pantry-count-label">{savedCountLabel}</span>
-          </div>
-          <div className="profile-stat-tile">
-            <span className="profile-stat-label">Latest</span>
-            <strong>
-              {latestSavedRecipe
-                ? formatCookedDate(latestSavedRecipe.savedAt)
-                : "None yet"}
-            </strong>
-            <span className="pantry-count-label">
-              {latestSavedRecipe ? "most recent" : "start saving"}
-            </span>
-          </div>
-          <div className="profile-stat-tile wide">
-            <span className="profile-stat-label">Next up</span>
-            <strong>
-              {latestSavedRecipe
-                ? latestSavedRecipe.title
-                : "Pick a favorite from Home"}
-            </strong>
-          </div>
-        </div>
-      </section>
-
-      {savedRecipes.length === 0 ? (
-        <section className="card gradient-card favorites-empty-card">
-          <p className="profile-kicker">Nothing saved yet</p>
-          <h3>Build your favorites as you browse.</h3>
-          <p className="sync-line favorites-empty-copy">
-            Tap the heart on any recipe and it will live here in your profile.
-          </p>
-          <button type="button" className="plan-btn" onClick={onGoHome}>
-            Find recipes
-          </button>
-        </section>
-      ) : (
-        <section className="card gradient-card favorites-list-card">
-          <div className="favorites-list-top">
             <h3>Saved recipes</h3>
             <span className="profile-inline-count">{savedRecipes.length}</span>
           </div>
 
-          <ul className="recipe-list favorites-list">
-            {savedRecipes.map((recipe) => {
-              const recipePreview = buildRecipePreview(recipe);
-              if (!recipePreview) return null;
+          {savedRecipes.length > 0 ? (
+            <ul className="recipe-list favorites-list">
+              {savedRecipes.map((recipe) => {
+                const recipePreview = buildRecipePreview(recipe);
+                if (!recipePreview) return null;
 
-              return (
-                <li
-                  key={recipe.recipeId}
-                  className="recipe-card gradient-card recipe-card-layout favorites-card"
-                >
-                  <div className="recipe-result-image-wrap">
-                    {recipe.image ? (
-                      <img
-                        src={recipe.image}
-                        alt={recipe.title}
-                        className="recipe-result-image"
-                      />
-                    ) : (
-                      <div className="recipe-result-image recipe-result-image-placeholder">
-                        No image
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="recipe-result-content">
-                    <div className="recipe-card-top">
-                      <button
-                        type="button"
-                        className={`save-icon-btn ${
-                          savedRecipeIds.includes(recipe.recipeId) ? "saved" : ""
-                        }`}
-                        onClick={() => onToggleSaved(recipe)}
-                        aria-label={
-                          savedRecipeIds.includes(recipe.recipeId)
-                            ? "Remove from favorites"
-                            : "Save recipe"
-                        }
-                        title={
-                          savedRecipeIds.includes(recipe.recipeId)
-                            ? "Remove from favorites"
-                            : "Save recipe"
-                        }
-                      >
-                        {savedRecipeIds.includes(recipe.recipeId) ? "♥" : "♡"}
-                      </button>
+                return (
+                  <li
+                    key={recipe.recipeId}
+                    className="recipe-card gradient-card recipe-card-layout favorites-card"
+                  >
+                    <div className="recipe-result-image-wrap">
+                      {recipe.image ? (
+                        <img
+                          src={recipe.image}
+                          alt={recipe.title}
+                          className="recipe-result-image"
+                        />
+                      ) : (
+                        <div className="recipe-result-image recipe-result-image-placeholder">
+                          No image
+                        </div>
+                      )}
                     </div>
 
-                    <p className="recipe-title">{recipe.title}</p>
-                    <p className="favorites-meta">
-                      Saved {formatCookedDate(recipe.savedAt)}
-                      {recipe.readyInMinutes ? ` • ${recipe.readyInMinutes} min` : ""}
-                    </p>
+                    <div className="recipe-result-content">
+                      <div className="recipe-card-top">
+                        <button
+                          type="button"
+                          className={`save-icon-btn ${
+                            savedRecipeIds.includes(recipe.recipeId) ? "saved" : ""
+                          }`}
+                          onClick={() => onToggleSaved(recipe)}
+                          aria-label={
+                            savedRecipeIds.includes(recipe.recipeId)
+                              ? "Remove from favorites"
+                              : "Save recipe"
+                          }
+                          title={
+                            savedRecipeIds.includes(recipe.recipeId)
+                              ? "Remove from favorites"
+                              : "Save recipe"
+                          }
+                        >
+                          {savedRecipeIds.includes(recipe.recipeId) ? "♥" : "♡"}
+                        </button>
+                      </div>
 
-                    <button
-                      type="button"
-                      className="plan-btn"
-                      onClick={() => onOpenRecipe(recipePreview)}
-                    >
-                      Open recipe
-                    </button>
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
+                      <p className="recipe-title">{recipe.title}</p>
+                      <p className="favorites-meta">
+                        Saved {formatCookedDate(recipe.savedAt)}
+                        {recipe.readyInMinutes ? ` • ${recipe.readyInMinutes} min` : ""}
+                      </p>
+
+                      <button
+                        type="button"
+                        className="plan-btn"
+                        onClick={() => onOpenRecipe(recipePreview)}
+                      >
+                        Open recipe
+                      </button>
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          ) : (
+            <p className="sync-line">Save recipes from Home to see them here.</p>
+          )}
         </section>
-      )}
-
-      <section className="card gradient-card profile-card">
-        <div className="profile-panel-top">
-          <h3>Profile</h3>
-        </div>
-
-        <label htmlFor="name">Name</label>
-        <input
-          id="name"
-          type="text"
-          value={profile.name || ""}
-          onChange={(event) =>
-            setProfile((current) => ({ ...current, name: event.target.value }))
-          }
-        />
-
-        <label htmlFor="email">Email</label>
-        <input
-          id="email"
-          type="email"
-          value={profile.email || ""}
-          onChange={(event) =>
-            setProfile((current) => ({ ...current, email: event.target.value }))
-          }
-        />
-
-        {restrictions.length === 0 ? (
-          <p style={{ color: "var(--text-secondary)", fontSize: "0.9rem" }}>
-            Loading...
-          </p>
-        ) : (
-          <div className="preference-grid">
-            {restrictions.map((r) => (
-              <button
-                key={r.restriction_id}
-                type="button"
-                className={`toggle-tile ${
-                  profile.dietary[r.dietary_restriction_name] ? "on" : ""
-                }`}
-                onClick={() => updateDietary(r.dietary_restriction_name)}
-              >
-                {r.dietary_restriction_name.charAt(0).toUpperCase() +
-                  r.dietary_restriction_name.slice(1)}
-              </button>
-            ))}
-          </div>
-        )}
-
-        {/* <textarea
-          placeholder="Notes"
-          value={profile.notes || ""}
-          onChange={(event) =>
-            setProfile((current) => ({ ...current, notes: event.target.value }))
-          }
-        /> */}
-      </section>
-
-      <button
-        className="save-btn"
-        type="button"
-        onClick={onSave}
-        disabled={saving}
-      >
-        {saving ? "Saving profile..." : "Save Profile"}
-      </button>
+      </div>
     </>
   );
 }

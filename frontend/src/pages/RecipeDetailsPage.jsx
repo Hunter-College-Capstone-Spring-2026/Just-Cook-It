@@ -5,7 +5,6 @@ import { API_BASE_URL } from "../lib/appConfig";
 import {
   buildGuideSteps,
   formatIngredientForUnits,
-  mergeIngredientLists,
   sendBrowserNotification,
 } from "../lib/appHelpers";
 
@@ -162,12 +161,11 @@ export default function RecipeDetailsPage({
     const cookedAt = new Date().toISOString();
 
     try {
-      const response = await fetch(`${API_BASE_URL}/api/pantry/cook`, {
+      const response = await fetch(`${API_BASE_URL}/api/users/cooked-recipes`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          user_id: userId,
-          ingredients: ingredientNames.map((name) => ({ name })),
+          userId,
           recipe: {
             recipeId: source.id || recipe.id,
             title: source.title || recipe.title,
@@ -206,11 +204,8 @@ export default function RecipeDetailsPage({
         });
       }
       onCooked?.({
-        pantryItems: mergeIngredientLists(
-          Array.isArray(payload.ingredients) ? payload.ingredients : [],
-          ingredientNames,
-        ),
-        recentlyAdded: ingredientNames,
+        pantryItems: [],
+        recentlyAdded: [],
         recipeTitle: source.title || recipe.title,
       });
     } catch (error) {

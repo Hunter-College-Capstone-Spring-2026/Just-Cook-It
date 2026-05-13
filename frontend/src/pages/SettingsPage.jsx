@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 
+import { API_BASE_URL } from "../lib/appConfig";
 import {
   getNotificationPermissionState,
   requestBrowserNotificationPermission,
@@ -7,12 +8,16 @@ import {
 } from "../lib/appHelpers";
 
 export default function SettingsPage({
+  profile,
+  setProfile,
   settings,
   setSettings,
   onSave,
   syncMessage,
   saving,
 }) {
+  const [restrictions, setRestrictions] = useState([]);
+  const [restrictionsLoading, setRestrictionsLoading] = useState(true);
   const [notificationState, setNotificationState] = useState(() =>
     getNotificationPermissionState(),
   );
@@ -31,6 +36,40 @@ export default function SettingsPage({
       [key]: !current[key],
     }));
   };
+
+  const updateProfile = (key, value) => {
+    setProfile((current) => ({
+      ...current,
+      [key]: value,
+    }));
+  };
+
+  const toggleDietary = (name) => {
+    setProfile((current) => ({
+      ...current,
+      dietary: { ...current.dietary, [name]: !current.dietary[name] },
+    }));
+  };
+
+  useEffect(() => {
+    let active = true;
+    fetch(`${API_BASE_URL}/api/dietary-restrictions`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (!active) return;
+        setRestrictions(Array.isArray(data) ? data : []);
+      })
+      .catch(() => {
+        if (!active) return;
+        setRestrictions([]);
+      })
+      .finally(() => {
+        if (active) setRestrictionsLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   useEffect(() => {
     const currentState = getNotificationPermissionState();
@@ -127,6 +166,103 @@ export default function SettingsPage({
       </section>
 
       <div className="settings-grid">
+        <section className="card gradient-card settings-card">
+          <div className="settings-card-head">
+            <div>
+              <p className="profile-kicker">Profile</p>
+              <h3>User Information</h3>
+            </div>
+          </div>
+
+          <div className="setting-group">
+            <div className="setting-row setting-row-stack">
+              <div className="setting-copy">
+                <h4>Name</h4>
+              </div>
+              <input
+                id="settingsName"
+                type="text"
+                value={profile.name || ""}
+                onChange={(event) => updateProfile("name", event.target.value)}
+              />
+            </div>
+
+            <div className="setting-row setting-row-stack">
+              <div className="setting-copy">
+                <h4>Email</h4>
+              </div>
+              <input
+                id="settingsEmail"
+                type="email"
+                value={profile.email || ""}
+                onChange={(event) => updateProfile("email", event.target.value)}
+              />
+            </div>
+
+            <div className="setting-row setting-row-stack">
+              <div className="setting-copy">
+                <h4>Max cook time</h4>
+                <p>Optional. Leave blank to remove this preference.</p>
+              </div>
+              <div className="profile-time-input-row">
+                <input
+                  id="settingsMaxCookTime"
+                  type="text"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  placeholder="30"
+                  value={profile.userMaxReadyTime ?? ""}
+                  onChange={(event) =>
+                    updateProfile(
+                      "userMaxReadyTime",
+                      event.target.value.replace(/\D/g, "").slice(0, 3),
+                    )
+                  }
+                  onBlur={() => {
+                    if (!profile.userMaxReadyTime) return;
+                    const boundedMinutes = Math.min(
+                      Math.max(Number(profile.userMaxReadyTime), 1),
+                      300,
+                    );
+                    updateProfile("userMaxReadyTime", String(boundedMinutes));
+                  }}
+                />
+                <span className="profile-time-input-unit">minutes</span>
+              </div>
+            </div>
+
+            <div className="setting-row setting-row-stack">
+              <div className="setting-copy">
+                <h4>Dietary restrictions</h4>
+              </div>
+              {restrictionsLoading ? (
+                <p className="sync-line">Loading...</p>
+              ) : restrictions.length === 0 ? (
+                <p className="sync-line">No dietary options found.</p>
+              ) : (
+                <div className="preference-grid settings-choice-grid">
+                  {restrictions.map((restriction) => {
+                    const restrictionName = restriction.dietary_restriction_name;
+                    return (
+                      <button
+                        key={restriction.restriction_id}
+                        type="button"
+                        className={`toggle-tile ${
+                          profile.dietary[restrictionName] ? "on" : ""
+                        }`}
+                        onClick={() => toggleDietary(restrictionName)}
+                      >
+                        {restrictionName.charAt(0).toUpperCase() +
+                          restrictionName.slice(1)}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+        </section>
+
         <section className="card gradient-card settings-card">
           <div className="settings-card-head">
             <div>

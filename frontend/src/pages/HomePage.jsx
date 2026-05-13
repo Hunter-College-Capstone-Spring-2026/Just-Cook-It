@@ -23,6 +23,7 @@ export default function HomePage({
   const [queryText, setQueryText] = useState("");
   const [maxTimeMinutes, setMaxTimeMinutes] = useState("");
   const [rankingMode, setRankingMode] = useState("missing");
+  const [addSearchedToPantry, setAddSearchedToPantry] = useState(false);
   const [visibleChars, setVisibleChars] = useState(0);
   const [showInteraction, setShowInteraction] = useState(false);
   const [error, setError] = useState("");
@@ -486,6 +487,32 @@ export default function HomePage({
       const mappedRecipes = (payload.results || []).map(mapRecipeFromApi);
 
       setRecipes(mappedRecipes);
+
+      if (addSearchedToPantry && ingredientList.length > 0) {
+        const pantryPayload = {
+          user_id: userId,
+          ingredients: ingredientList.map((name) => ({ name })),
+        };
+        if (!online) {
+          setQueuedPantryAdds((current) => [...current, pantryPayload]);
+        } else {
+          try {
+            const pantryResponse = await fetch(`${API_BASE_URL}/api/pantry/add`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(pantryPayload),
+            });
+            const pantryData = await pantryResponse.json();
+            if (pantryResponse.ok && Array.isArray(pantryData.ingredients)) {
+              setPantryItems((current) =>
+                mergeIngredientLists(current, pantryData.ingredients),
+              );
+            }
+          } catch {
+            setQueuedPantryAdds((current) => [...current, pantryPayload]);
+          }
+        }
+      }
     } catch (requestError) {
       setApiError(
         formatRequestError(requestError, "Could not connect to backend API."),
@@ -840,6 +867,22 @@ export default function HomePage({
               >
                 Most ingredients used
               </button>
+            </div>
+
+            <div className="setting-row search-setting-row">
+              <div className="setting-copy">
+                <h4>Add searched ingredients to pantry</h4>
+                <p>When enabled, searching also adds current ingredient chips to pantry.</p>
+              </div>
+              <div className="setting-actions">
+                <button
+                  type="button"
+                  className={`toggle-switch ${addSearchedToPantry ? "on" : ""}`}
+                  onClick={() => setAddSearchedToPantry((current) => !current)}
+                >
+                  {addSearchedToPantry ? "On" : "Off"}
+                </button>
+              </div>
             </div>
           </div>
 
