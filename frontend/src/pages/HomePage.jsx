@@ -43,7 +43,7 @@ export default function HomePage({
     [],
   );
 
-  const welcomeText = "Welcome!";
+  const welcomeText = "Welcome";
   const characters = useMemo(() => welcomeText.split(""), [welcomeText]);
   const resultCount = settings.quickRecipes ? 5 : 10;
   const ignorePantry = true;
@@ -533,7 +533,6 @@ export default function HomePage({
     <>
       <section className="home-hero-card card gradient-card">
         <div className="home-hero-copy">
-          <p className="home-kicker">Home</p>
           <h2
             id="welcome"
             className="welcome-text welcome-text-home"
@@ -549,10 +548,10 @@ export default function HomePage({
             ))}
           </h2>
           <p className="home-hero-title">
-            Cook with what is already in your kitchen.
+            Cooking, without the extra steps!
           </p>
           <p className="search-subtitle home-search-subtitle">
-            Add ingredients or describe the meal you want.
+            Glance at your daily suggested recipes for effortless inspiration, <br></br><br></br>or search recipes manually for a more controlled experience.
           </p>
 
           <div className="home-hero-actions">
@@ -561,15 +560,10 @@ export default function HomePage({
               className="plan-btn home-hero-cta"
               onClick={jumpToGenerator}
             >
-              Let's cook!
+              Search Recipes
             </button>
           </div>
 
-          <div className="home-hero-pills">
-            <span className="home-hero-pill">
-              {manualIngredients.length} picked
-            </span>
-          </div>
         </div>
 
         <div className="home-hero-art" aria-hidden="true">
@@ -583,7 +577,7 @@ export default function HomePage({
           <div>
             <p className="home-kicker">Daily suggested recipe</p>
             <p className="search-subtitle">
-              Personalized from your pantry and saved profile restrictions.
+              Personalized from your pantry and profile preferences.
             </p>
           </div>
           <button
@@ -654,7 +648,7 @@ export default function HomePage({
                   ingredient(s):{" "}
                   {dailySuggestion.missedIngredients?.length
                     ? dailySuggestion.missedIngredients.join(", ")
-                    : "None"}
+                    : "Hooray!"}
                 </p>
 
                 <button
@@ -679,8 +673,8 @@ export default function HomePage({
           className="initial-search-panel gradient-card"
           aria-label="Search by ingredients or query"
         >
-          <h3 className="initial-search-title">Start with ingredients</h3>
-          <p className="search-subtitle">Build a quick list, then search.</p>
+          <h3 className="initial-search-title">Manual Seach</h3>
+          <p className="search-subtitle">Add ingredients or describe the meal you want</p>
 
           {!online ? (
             <p className="sync-line">
@@ -700,7 +694,7 @@ export default function HomePage({
               <input
                 type="text"
                 id="userInput"
-                placeholder="Type an ingredient and press Enter"
+                placeholder="Type each ingredient and press Enter"
                 value={inputValue}
                 onChange={(event) => setInputValue(event.target.value)}
                 onKeyDown={(event) => {
@@ -743,7 +737,7 @@ export default function HomePage({
                 ))}
               </div>
             ) : (
-              <p className="field-hint">Press Enter to add each ingredient.</p>
+              <p className="field-hint">Click common ingredients below to add them to your search:</p>
             )}
 
             <div
@@ -774,7 +768,7 @@ export default function HomePage({
               }}
             />
 
-            <label htmlFor="maxTimeInput">Preferred cook time (minutes)</label>
+            <label htmlFor="maxTimeInput">Preferred cook time (maximum)</label>
             <div className="time-input-row">
               <input
                 type="text"
@@ -782,7 +776,7 @@ export default function HomePage({
                 className="time-input-compact"
                 inputMode="numeric"
                 pattern="[0-9]*"
-                placeholder="30"
+                placeholder="Optional, e.g. 30"
                 value={maxTimeMinutes}
                 onChange={(event) =>
                   setMaxTimeMinutes(event.target.value.replace(/\D/g, "").slice(0, 3))
@@ -799,9 +793,6 @@ export default function HomePage({
               />
               <span className="time-input-unit">minutes</span>
             </div>
-            <p id="maxTimeHint" className="field-hint">
-              Leave this blank if any cook time works for you.
-            </p>
 
             <label>Rank results by</label>
             <div
@@ -816,7 +807,7 @@ export default function HomePage({
                 }`}
                 onClick={() => setRankingMode("missing")}
               >
-                Fewest missing ingredients
+                Least ingredients missing
               </button>
               <button
                 type="button"
@@ -825,7 +816,7 @@ export default function HomePage({
                 }`}
                 onClick={() => setRankingMode("used")}
               >
-                Most used ingredients
+                Most ingredients used
               </button>
             </div>
           </div>
@@ -866,7 +857,7 @@ export default function HomePage({
           ) : null}
 
           {!loading && recipes.length === 0 && !error && !apiError ? (
-            <p id="output">Your suggestions will appear here.</p>
+            <p id="output">Your search results will appear here.</p>
           ) : null}
 
           <ul className="recipe-list">
