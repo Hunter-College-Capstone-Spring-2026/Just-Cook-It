@@ -201,7 +201,7 @@ export default function SettingsPage({
 
             <div className="setting-row setting-row-stack">
               <div className="setting-copy">
-                <h4>Max cook time</h4>
+                <h4>Max cook time preference</h4>
                 <p>Optional. Leave blank to remove this preference.</p>
               </div>
               <div className="profile-time-input-row">

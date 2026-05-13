@@ -26,6 +26,7 @@ export default function PantryPage({
   const [pantryItems, setPantryItems] = useState(initialPantryItems || []);
   const [addDraft, setAddDraft] = useState("");
   const [adding, setAdding] = useState(false);
+  const [removingItem, setRemovingItem] = useState("");
   const [addError, setAddError] = useState("");
   const [manualRecentlyAdded, setManualRecentlyAdded] = useState([]);
   const [loading, setLoading] = useState(
@@ -185,6 +186,44 @@ export default function PantryPage({
       );
     } finally {
       setAdding(false);
+    }
+  };
+
+  const removePantryItem = async (ingredientName) => {
+    if (!ingredientName || removingItem) return;
+    setRemovingItem(ingredientName);
+    setAddError("");
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/pantry/remove`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          user_id: userId,
+          ingredient_name: ingredientName,
+        }),
+      });
+      const payload = await response.json();
+
+      if (!response.ok) {
+        throw new Error(payload?.detail || "Could not remove pantry item.");
+      }
+
+      setPantryItems(
+        Array.isArray(payload.ingredients)
+          ? payload.ingredients
+          : (current) =>
+              current.filter(
+                (item) => item.toLowerCase() !== ingredientName.toLowerCase(),
+              ),
+      );
+      setManualRecentlyAdded((current) =>
+        current.filter((item) => item.toLowerCase() !== ingredientName.toLowerCase()),
+      );
+    } catch (requestError) {
+      setAddError(formatRequestError(requestError, "Could not remove pantry item."));
+    } finally {
+      setRemovingItem("");
     }
   };
 
@@ -383,6 +422,14 @@ export default function PantryPage({
                   }`}
                 >
                   <span>{item}</span>
+                  <button
+                    type="button"
+                    className="pantry-remove-btn"
+                    onClick={() => removePantryItem(item)}
+                    disabled={removingItem === item}
+                  >
+                    {removingItem === item ? "Removing..." : "Remove"}
+                  </button>
                 </li>
               ))}
             </ul>

@@ -869,21 +869,30 @@ export default function HomePage({
               </button>
             </div>
 
-            <div className="setting-row search-setting-row">
-              <div className="setting-copy">
-                <h4>Add searched ingredients to pantry</h4>
-                <p>When enabled, searching also adds current search ingredients to pantry.</p>
-              </div>
-              <div className="setting-actions">
-                <button
-                  type="button"
-                  className={`toggle-switch ${addSearchedToPantry ? "on" : ""}`}
-                  onClick={() => setAddSearchedToPantry((current) => !current)}
-                >
-                  {addSearchedToPantry ? "On" : "Off"}
-                </button>
-              </div>
+            <div className="search-toggle-row">
+              <label htmlFor="searchAddToPantry" className="search-toggle-label">
+                Add search ingredients to pantry
+              </label>
+              <button
+                id="searchAddToPantry"
+                type="button"
+                className={`toggle-switch visual-toggle ${addSearchedToPantry ? "on" : ""}`}
+                onClick={() => setAddSearchedToPantry((current) => !current)}
+                aria-pressed={addSearchedToPantry}
+                aria-label={
+                  addSearchedToPantry
+                    ? "Turn off adding searched ingredients to pantry"
+                    : "Turn on adding searched ingredients to pantry"
+                }
+              >
+                <span className="toggle-knob" aria-hidden="true" />
+              </button>
             </div>
+            <p className="field-hint search-toggle-hint">
+              {addSearchedToPantry
+                ? "Enabled: clicking Find recipes also adds the searched ingredients to your pantry automatically."
+                : "Disabled: Find recipes only searches and does not add ingredients to pantry."}
+            </p>
           </div>
 
           <div className="search-actions search-actions-right">
