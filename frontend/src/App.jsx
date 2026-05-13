@@ -541,6 +541,8 @@ function App() {
                 <HomePage
                   settings={settings}
                   userId={userId}
+                  authUser={authUser}
+                  profile={profile}
                   onOpenRecipe={(recipe) => setSelectedRecipe(recipe)}
                   savedRecipeIds={savedRecipeIds}
                   onToggleSaved={toggleSavedRecipe}

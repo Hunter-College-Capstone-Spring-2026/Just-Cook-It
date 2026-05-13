@@ -28,7 +28,8 @@ def search_recipes_endpoint(
     number: int = Query(3, ge=1, le=20), #TODO: change number later
     ranking: int = Query(1, ge=1, le=2),
     ignorePantry: bool = Query(True),
-    maxTime: int | None = Query(None, ge=1, le=300)
+    maxTime: int | None = Query(None, ge=1, le=300),
+    manualOnly: bool = Query(False),
 ):
     return search_recipes_complex(
         user_id=userId,
@@ -37,7 +38,8 @@ def search_recipes_endpoint(
         number=number,
         ranking=ranking,
         ignore_pantry=ignorePantry,
-        max_ready_time=maxTime
+        max_ready_time=maxTime,
+        manual_only=manualOnly,
     )
 
 

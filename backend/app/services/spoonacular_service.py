@@ -113,29 +113,32 @@ def search_recipes_complex(
     number: int = 3,
     ranking: int = 1,
     ignore_pantry: bool = True,
-    max_ready_time: int | None = None
+    max_ready_time: int | None = None,
+    manual_only: bool = False,
 ):
     url = f"{settings.spoonacular_base_url}/recipes/complexSearch"
 
-    user_profile = get_user_profile(user_id)
-    user_settings = get_user_settings(user_id)
+    user_profile = get_user_profile(user_id) if not manual_only else {}
+    user_settings = get_user_settings(user_id) if not manual_only else {}
     dietary = user_profile.get("dietary", {})
-    derived_max_ready_time = _first_valid_int(
-        max_ready_time,
-        user_profile.get("maxReadyTime"),
-        user_profile.get("maxTime"),
-        user_settings.get("maxReadyTime"),
-        user_settings.get("maxTime"),
-        user_settings.get("preferredMaxReadyTime"),
-        user_settings.get("readyTime"),
+    derived_max_ready_time = (
+        _first_valid_int(max_ready_time)
+        if manual_only
+        else _first_valid_int(
+            max_ready_time,
+            user_profile.get("maxReadyTime"),
+            user_profile.get("maxTime"),
+            user_settings.get("maxReadyTime"),
+            user_settings.get("maxTime"),
+            user_settings.get("preferredMaxReadyTime"),
+            user_settings.get("readyTime"),
+        )
     )
 
-    # Pull pantry and merge with any explicitly passed ingredients
-    pantry_items = get_user_pantry(user_id)
+    pantry_items = [] if manual_only else get_user_pantry(user_id)
     passed_ingredients = [
         part.strip() for part in (ingredients or "").split(",") if part.strip()
     ]
-    # Deduplicate: passed ingredients first, then pantry fills the rest
     seen: set[str] = set()
     merged: list[str] = []
     for item in passed_ingredients + pantry_items:
@@ -175,8 +178,6 @@ def search_recipes_complex(
     if derived_max_ready_time is not None:
         params["maxReadyTime"] = derived_max_ready_time
 
-    # Use the full dietary helper — covers vegan, keto, paleo, whole30,
-    # gluten/dairy/shellfish/soy/egg/treenut/wheat intolerances, etc.
     diet, intolerances = _derive_diet_and_intolerances(dietary)
     if diet:
         params["diet"] = diet

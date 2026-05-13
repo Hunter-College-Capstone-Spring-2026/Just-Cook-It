@@ -12,6 +12,8 @@ import {
 export default function HomePage({
   settings,
   userId,
+  authUser,
+  profile,
   onOpenRecipe,
   savedRecipeIds,
   onToggleSaved,
@@ -43,7 +45,24 @@ export default function HomePage({
     [],
   );
 
-  const welcomeText = "Welcome";
+  const profileName = typeof profile?.name === "string" ? profile.name.trim() : "";
+  const authDisplayName =
+    typeof authUser?.displayName === "string"
+      ? authUser.displayName.trim()
+      : typeof authUser?.name === "string"
+        ? authUser.name.trim()
+        : "";
+  const email =
+    (typeof profile?.email === "string" ? profile.email : "") ||
+    (typeof authUser?.email === "string" ? authUser.email : "");
+  const emailUsername = useMemo(() => {
+    const trimmedEmail = String(email || "").trim();
+    const atIndex = trimmedEmail.indexOf("@");
+    return atIndex > 0 ? trimmedEmail.slice(0, atIndex) : "";
+  }, [email]);
+
+  const resolvedName = profileName || authDisplayName || emailUsername;
+  const welcomeText = resolvedName ? `Welcome, ${resolvedName}` : "Welcome!";
   const characters = useMemo(() => welcomeText.split(""), [welcomeText]);
   const resultCount = settings.quickRecipes ? 5 : 10;
   const ignorePantry = true;
@@ -70,6 +89,8 @@ export default function HomePage({
   });
 
   useEffect(() => {
+    setVisibleChars(0);
+    setShowInteraction(false);
     const startDelay = 400;
     const charDelay = 110;
     let revealTimer;
@@ -88,7 +109,7 @@ export default function HomePage({
       clearTimeout(startTimer);
       if (revealTimer) clearInterval(revealTimer);
     };
-  }, [characters.length]);
+  }, [welcomeText, characters.length]);
 
   useEffect(() => {
     let cancelled = false;
@@ -433,6 +454,7 @@ export default function HomePage({
         number: String(resultCount),
         ranking: rankingMode === "used" ? "1" : "2",
         ignorePantry: String(ignorePantry),
+        manualOnly: "true",
       });
 
       if (ingredients) {
@@ -648,7 +670,7 @@ export default function HomePage({
                   ingredient(s):{" "}
                   {dailySuggestion.missedIngredients?.length
                     ? dailySuggestion.missedIngredients.join(", ")
-                    : "Hooray!"}
+                    : "None"}
                 </p>
 
                 <button
