@@ -476,7 +476,7 @@ export default function ProfilePage({
 
       <section className="card gradient-card profile-card">
         <div className="profile-panel-top">
-          <h3>Profile notes</h3>
+          <h3>Profile</h3>
         </div>
 
         <label htmlFor="name">Name</label>
@@ -521,13 +521,13 @@ export default function ProfilePage({
           </div>
         )}
 
-        <textarea
+        {/* <textarea
           placeholder="Notes"
           value={profile.notes || ""}
           onChange={(event) =>
             setProfile((current) => ({ ...current, notes: event.target.value }))
           }
-        />
+        /> */}
       </section>
 
       <button
